@@ -46,9 +46,11 @@ function bounceOffPaddle() {
 }
 
 
-// The ball bounces off the bricks. Nothing happens to the brick yet.
+// The ball bounces off the bricks and breaks the one it hits.
 function bounceOffBricks() {
-  for (const brick of bricks) {
+  for (let i = 0; i < bricks.length; i++) {
+    const brick = bricks[i];
+
     if (!boxesTouch(ball, brick)) {
       continue;  // not touching this brick, check the next one
     }
@@ -75,6 +77,7 @@ function bounceOffBricks() {
       }
     }
 
+    bricks.splice(i, 1);  // remove the brick that was hit
     break;  // bounce off one brick per update, then stop looking
   }
 }
