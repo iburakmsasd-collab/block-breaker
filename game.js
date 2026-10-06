@@ -72,7 +72,9 @@ document.addEventListener("keydown", function (event) {
     event.preventDefault();
     if (!ballLaunched) {
       ballLaunched = true;
-      ball.vy = -BALL_SPEED;
+      const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
+      ball.vx = horizontalDirection * BALL_SPEED / Math.sqrt(2);
+      ball.vy = -BALL_SPEED / Math.sqrt(2);
     }
   }
   // Stop the arrow keys from scrolling the page.
