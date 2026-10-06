@@ -30,12 +30,15 @@ const ball = {
   vy: 0
 };
 
-// Put the ball in the center and reset its speed and direction.
+let ballLaunched = false;
+
+// Put the ball above the paddle and wait for the player to launch it.
 function resetBall() {
-  ball.x = WIDTH / 2 - ball.width / 2;
-  ball.y = HEIGHT / 2 - ball.height / 2;
-  ball.vx = BALL_SPEED;  // right
-  ball.vy = BALL_SPEED;  // down
+  ball.x = paddle.x + paddle.width / 2 - ball.width / 2;
+  ball.y = paddle.y - ball.height;
+  ball.vx = 0;
+  ball.vy = 0;
+  ballLaunched = false;
 }
 
 
@@ -65,6 +68,13 @@ const keys = {};
 
 document.addEventListener("keydown", function (event) {
   keys[event.key.toLowerCase()] = true;
+  if (event.code === "Space") {
+    event.preventDefault();
+    if (!ballLaunched) {
+      ballLaunched = true;
+      ball.vy = -BALL_SPEED;
+    }
+  }
   // Stop the arrow keys from scrolling the page.
   if (event.key.startsWith("Arrow")) {
     event.preventDefault();
@@ -112,8 +122,13 @@ function movePaddle() {
 }
 
 function moveBall() {
-  ball.x = ball.x + ball.vx;
-  ball.y = ball.y + ball.vy;
+  if (ballLaunched) {
+    ball.x = ball.x + ball.vx;
+    ball.y = ball.y + ball.vy;
+  } else {
+    ball.x = paddle.x + paddle.width / 2 - ball.width / 2;
+    ball.y = paddle.y - ball.height;
+  }
 }
 
 
