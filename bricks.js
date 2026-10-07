@@ -5,7 +5,7 @@
 const BRICK_COLUMNS = 8;
 const BRICK_ROWS = 4;
 const BRICK_WIDTH = 60;
-const BRICK_HEIGHT = 20;
+const BRICK_HEIGHT = 30;
 const BRICK_GAP = 6;     // empty space between bricks
 const BRICKS_TOP = 50;   // how far down the first row starts
 
@@ -24,7 +24,8 @@ function makeBricks() {
         x: left + col * (BRICK_WIDTH + BRICK_GAP),
         y: BRICKS_TOP + row * (BRICK_HEIGHT + BRICK_GAP),
         width: BRICK_WIDTH,
-        height: BRICK_HEIGHT
+        height: BRICK_HEIGHT,
+        color: `hsl(${Math.floor(Math.random() * 360)}, 75%, 55%)`
       });
     }
   }
@@ -34,8 +35,8 @@ function makeBricks() {
 
 // Draws every brick in the list.
 function drawBricks() {
-  ctx.fillStyle = "white";
   for (const brick of bricks) {
+    ctx.fillStyle = brick.color;
     ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
   }
 }

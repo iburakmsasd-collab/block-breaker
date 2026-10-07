@@ -30,7 +30,10 @@ function bounceOffWalls() {
   }
   if (ball.y < 0) {
     ball.y = 0;
-    ball.vy = -ball.vy;
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
+    ball.vx = horizontalDirection * speed / Math.sqrt(2);
+    ball.vy = speed / Math.sqrt(2);
   }
 }
 
@@ -45,6 +48,27 @@ function bounceOffPaddle() {
   }
 }
 
+
+function breakBrickIntoParticles(brick) {
+  const columns = 5;
+  const rows = 4;
+  const particleSize = Math.min(brick.width / columns, brick.height / rows);
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      particles.push({
+        x: brick.x + (column + 0.5) * brick.width / columns - particleSize / 2,
+        y: brick.y + (row + 0.5) * brick.height / rows - particleSize / 2,
+        width: particleSize,
+        height: particleSize,
+        vx: 0,
+        vy: 1 + Math.random() * 3,
+        life: 45,
+        maxLife: 45,
+        color: brick.color
+      });
+    }
+  }
+}
 
 // The ball bounces off the bricks and removes the one it hits.
 function bounceOffBricks() {
@@ -75,6 +99,12 @@ function bounceOffBricks() {
       }
     }
 
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
+    ball.vx = horizontalDirection * speed / Math.sqrt(2);
+    ball.vy = (ball.vy < 0 ? -1 : 1) * speed / Math.sqrt(2);
+
+    breakBrickIntoParticles(brick);
     bricks.splice(bricks.indexOf(brick), 1);
     break;  // bounce off one brick per update, then stop looking
   }

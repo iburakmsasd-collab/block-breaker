@@ -24,8 +24,8 @@ const BALL_SPEED = 4;
 const ball = {
   x: 0,
   y: 0,
-  width: 12,
-  height: 12,
+  width: 15,
+  height: 15,
   vx: 0,
   vy: 0
 };
@@ -49,7 +49,7 @@ const paddle = {
   x: WIDTH / 2 - 45,
   y: HEIGHT - 30,
   width: 90,
-  height: 12,
+  height: 8,
   speed: 6
 };
 
@@ -58,6 +58,7 @@ const paddle = {
 // THE BRICKS (the list is filled in by makeBricks() in bricks.js)
 // ------------------------------------------------------------
 let bricks = [];
+let particles = [];
 
 
 // ------------------------------------------------------------
@@ -72,9 +73,8 @@ document.addEventListener("keydown", function (event) {
     event.preventDefault();
     if (!ballLaunched) {
       ballLaunched = true;
-      const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
-      ball.vx = horizontalDirection * BALL_SPEED / Math.sqrt(2);
-      ball.vy = -BALL_SPEED / Math.sqrt(2);
+      ball.vx = 0;
+      ball.vy = -BALL_SPEED;
     }
   }
   // Stop the arrow keys from scrolling the page.
@@ -103,6 +103,22 @@ function update() {
   // The ball fell off the bottom: back to the center.
   if (ball.y > HEIGHT) {
     resetBall();
+  }
+
+  updateParticles();
+}
+
+function updateParticles() {
+  for (let index = particles.length - 1; index >= 0; index--) {
+    const particle = particles[index];
+    particle.x += particle.vx;
+    particle.y += particle.vy;
+    particle.vy += 0.15;
+    particle.life -= 1;
+
+    if (particle.life <= 0) {
+      particles.splice(index, 1);
+    }
   }
 }
 
@@ -144,9 +160,21 @@ function draw() {
 
   ctx.fillStyle = "white";
   ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
-  ctx.fillRect(ball.x, ball.y, ball.width, ball.height);
+  ctx.beginPath();
+  ctx.arc(ball.x + ball.width / 2, ball.y + ball.height / 2, ball.width / 2, 0, Math.PI * 2);
+  ctx.fill();
 
   drawBricks();  // bricks.js
+  drawParticles();
+}
+
+function drawParticles() {
+  for (const particle of particles) {
+    ctx.globalAlpha = particle.life / particle.maxLife;
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(particle.x, particle.y, particle.width, particle.height);
+  }
+  ctx.globalAlpha = 1;
 }
 
 
