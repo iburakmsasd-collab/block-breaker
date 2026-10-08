@@ -20,6 +20,7 @@ const HEIGHT = canvas.height; // 450
 // A positive vy means the ball is moving DOWN the screen.
 // ------------------------------------------------------------
 const BALL_SPEED = 4;
+let BALL_GRAVITY = 0.01;
 
 const ball = {
   x: 0,
@@ -59,6 +60,9 @@ const paddle = {
 // ------------------------------------------------------------
 let bricks = [];
 let particles = [];
+let blocksBroken = 0;
+let lives = 3;
+let deathScreen = false;
 
 
 // ------------------------------------------------------------
@@ -69,9 +73,21 @@ const keys = {};
 
 document.addEventListener("keydown", function (event) {
   keys[event.key.toLowerCase()] = true;
+  if (event.code === "Enter" && deathScreen) {
+    event.preventDefault();
+    if (lives === 0) {
+      bricks = makeBricks();
+      particles = [];
+      blocksBroken = 0;
+      lives = 3;
+      paddle.x = WIDTH / 2 - paddle.width / 2;
+      resetBall();
+    }
+    deathScreen = false;
+  }
   if (event.code === "Space") {
     event.preventDefault();
-    if (!ballLaunched) {
+    if (!ballLaunched && !deathScreen) {
       ballLaunched = true;
       ball.vx = 0;
       ball.vy = -BALL_SPEED;
@@ -93,6 +109,10 @@ document.addEventListener("keyup", function (event) {
 // what they touched.
 // ------------------------------------------------------------
 function update() {
+  if (deathScreen) {
+    return;
+  }
+
   movePaddle();
   moveBall();
 
@@ -100,9 +120,11 @@ function update() {
   bounceOffPaddle();  // collisions.js
   bounceOffBricks();  // collisions.js
 
-  // The ball fell off the bottom: back to the center.
+  // Losing the ball costs a life and pauses until the player continues.
   if (ball.y > HEIGHT) {
+    lives = Math.max(0, lives - 1);
     resetBall();
+    deathScreen = true;
   }
 
   updateParticles();
@@ -141,6 +163,7 @@ function movePaddle() {
 
 function moveBall() {
   if (ballLaunched) {
+    ball.vy = ball.vy + BALL_GRAVITY;
     ball.x = ball.x + ball.vx;
     ball.y = ball.y + ball.vy;
   } else {
@@ -166,6 +189,38 @@ function draw() {
 
   drawBricks();  // bricks.js
   drawParticles();
+
+  if (deathScreen) {
+    drawDeathScreen();
+  }
+  drawHud();
+}
+
+function drawHud() {
+  ctx.fillStyle = "white";
+  ctx.font = "18px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(`Blocks broken: ${blocksBroken}`, 16, 14);
+
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`Lives: ${lives}`, WIDTH - 16, HEIGHT - 14);
+}
+
+function drawDeathScreen() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  ctx.fillStyle = "white";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "bold 34px sans-serif";
+  ctx.fillText("You died!", WIDTH / 2, HEIGHT / 2 - 42);
+  ctx.font = "20px sans-serif";
+  ctx.fillText(`Blocks broken: ${blocksBroken}`, WIDTH / 2, HEIGHT / 2 + 2);
+  ctx.font = "16px sans-serif";
+  ctx.fillText(lives > 0 ? "Press Enter to continue" : "Press Enter to restart", WIDTH / 2, HEIGHT / 2 + 42);
 }
 
 function drawParticles() {

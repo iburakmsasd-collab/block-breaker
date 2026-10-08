@@ -30,10 +30,7 @@ function bounceOffWalls() {
   }
   if (ball.y < 0) {
     ball.y = 0;
-    const speed = Math.hypot(ball.vx, ball.vy);
-    const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
-    ball.vx = horizontalDirection * speed / Math.sqrt(2);
-    ball.vy = speed / Math.sqrt(2);
+    ball.vy = Math.abs(ball.vy);
   }
 }
 
@@ -44,7 +41,11 @@ function bounceOffWalls() {
 function bounceOffPaddle() {
   if (boxesTouch(ball, paddle) && ball.vy > 0) {
     ball.y = paddle.y - ball.height;  // sit on top of the paddle
-    ball.vy = -ball.vy;
+    const impactOffset = (ball.x + ball.width / 2 - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+    const clampedOffset = Math.max(-1, Math.min(1, impactOffset));
+    const speed = Math.hypot(ball.vx, ball.vy);
+    ball.vx = clampedOffset * speed * 0.8;
+    ball.vy = -Math.sqrt(speed * speed - ball.vx * ball.vx);
   }
 }
 
@@ -70,7 +71,32 @@ function breakBrickIntoParticles(brick) {
   }
 }
 
-// The ball bounces off the bricks and removes the one it hits.
+function breakCheckerTilesIntoParticles(brick, darkerTiles) {
+  const tileWidth = brick.width / BRICK_CHECKER_COLUMNS;
+  const tileHeight = brick.height / BRICK_CHECKER_ROWS;
+  for (let row = 0; row < BRICK_CHECKER_ROWS; row++) {
+    for (let column = 0; column < BRICK_CHECKER_COLUMNS; column++) {
+      const isDarkerTile = (row + column) % 2 === 1;
+      if (isDarkerTile !== darkerTiles) {
+        continue;
+      }
+
+      particles.push({
+        x: brick.x + column * tileWidth,
+        y: brick.y + row * tileHeight,
+        width: tileWidth,
+        height: tileHeight,
+        vx: (Math.random() - 0.5) * 2,
+        vy: 1 + Math.random() * 2,
+        life: 45,
+        maxLife: 45,
+        color: isDarkerTile ? brick.darkerColor : brick.color
+      });
+    }
+  }
+}
+
+// The ball bounces off bricks and removes each one after enough hits.
 function bounceOffBricks() {
   for (const brick of bricks) {
     if (!boxesTouch(ball, brick)) {
@@ -99,13 +125,18 @@ function bounceOffBricks() {
       }
     }
 
-    const speed = Math.hypot(ball.vx, ball.vy);
-    const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
-    ball.vx = horizontalDirection * speed / Math.sqrt(2);
-    ball.vy = (ball.vy < 0 ? -1 : 1) * speed / Math.sqrt(2);
-
-    breakBrickIntoParticles(brick);
-    bricks.splice(bricks.indexOf(brick), 1);
+    brick.hitstillbroken -= 1;
+    if (brick.darkerColor) {
+      breakCheckerTilesIntoParticles(brick, brick.hitstillbroken <= 0);
+      if (brick.hitstillbroken <= 0) {
+        blocksBroken += 1;
+        bricks.splice(bricks.indexOf(brick), 1);
+      }
+    } else if (brick.hitstillbroken <= 0) {
+      breakBrickIntoParticles(brick);
+      blocksBroken += 1;
+      bricks.splice(bricks.indexOf(brick), 1);
+    }
     break;  // bounce off one brick per update, then stop looking
   }
 }
