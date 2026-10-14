@@ -19,7 +19,7 @@ function boxesTouch(a, b) {
 
 // The ball bounces off the left, right, and top walls.
 // (The bottom is not a wall: falling off the bottom resets the ball.)
-function bounceOffWalls() {
+function bounceOffWalls(ball) {
   if (ball.x < 0) {
     ball.x = 0;
     ball.vx = -ball.vx;
@@ -38,7 +38,7 @@ function bounceOffWalls() {
 // The ball bounces off the top of the paddle.
 // ball.vy > 0 means "the ball is moving down", so it only bounces
 // when it is falling onto the paddle.
-function bounceOffPaddle() {
+function bounceOffPaddle(ball) {
   if (boxesTouch(ball, paddle) && ball.vy > 0) {
     ball.y = paddle.y - ball.height;  // sit on top of the paddle
     const impactOffset = (ball.x + ball.width / 2 - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
@@ -96,9 +96,29 @@ function breakCheckerTilesIntoParticles(brick, darkerTiles) {
   }
 }
 
+function damageBrick(brick) {
+  brick.hitstillbroken -= 1;
+  if (brick.darkerColor) {
+    breakCheckerTilesIntoParticles(brick, brick.hitstillbroken <= 0);
+  }
+
+  if (brick.hitstillbroken <= 0) {
+    if (brick.darkerColor) {
+      // The checker tiles were already emitted for the final hit.
+    } else {
+      breakBrickIntoParticles(brick);
+    }
+    const brickIndex = bricks.indexOf(brick);
+    if (brickIndex !== -1) {
+      bricks.splice(brickIndex, 1);
+      onBrickDestroyed(brick);
+    }
+  }
+}
+
 // The ball bounces off bricks and removes each one after enough hits.
-function bounceOffBricks() {
-  for (const brick of bricks) {
+function bounceOffBricks(ball) {
+  for (const brick of [...bricks]) {
     if (!boxesTouch(ball, brick)) {
       continue;  // not touching this brick, check the next one
     }
@@ -125,18 +145,7 @@ function bounceOffBricks() {
       }
     }
 
-    brick.hitstillbroken -= 1;
-    if (brick.darkerColor) {
-      breakCheckerTilesIntoParticles(brick, brick.hitstillbroken <= 0);
-      if (brick.hitstillbroken <= 0) {
-        blocksBroken += 1;
-        bricks.splice(bricks.indexOf(brick), 1);
-      }
-    } else if (brick.hitstillbroken <= 0) {
-      breakBrickIntoParticles(brick);
-      blocksBroken += 1;
-      bricks.splice(bricks.indexOf(brick), 1);
-    }
+    damageBrick(brick);
     break;  // bounce off one brick per update, then stop looking
   }
 }
