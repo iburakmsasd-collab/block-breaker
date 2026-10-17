@@ -103,17 +103,28 @@ function damageBrick(brick) {
   }
 
   if (brick.hitstillbroken <= 0) {
+    if (!brick.darkerColor) {
+      breakBrickIntoParticles(brick);
+    }
+    destroyBrick(brick, true);
+  }
+}
+
+function destroyBrick(brick, particlesAlreadyEmitted = false) {
+  const brickIndex = bricks.indexOf(brick);
+  if (brickIndex === -1) {
+    return;
+  }
+  if (!particlesAlreadyEmitted) {
     if (brick.darkerColor) {
-      // The checker tiles were already emitted for the final hit.
+      breakCheckerTilesIntoParticles(brick, false);
+      breakCheckerTilesIntoParticles(brick, true);
     } else {
       breakBrickIntoParticles(brick);
     }
-    const brickIndex = bricks.indexOf(brick);
-    if (brickIndex !== -1) {
-      bricks.splice(brickIndex, 1);
-      onBrickDestroyed(brick);
-    }
   }
+  bricks.splice(brickIndex, 1);
+  onBrickDestroyed(brick);
 }
 
 // The ball bounces off bricks and removes each one after enough hits.

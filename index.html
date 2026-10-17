@@ -8,8 +8,12 @@
 </head>
 <body>
   <main>
+    <form id="level-code-form" class="level-code">
+      <label for="level-code">Code</label>
+      <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off">
+    </form>
     <canvas id="game" width="600" height="450" aria-label="Block Breaker game"></canvas>
-    <p>Move the paddle with the left and right arrow keys, or A and D.</p>
+    <p>Move with the arrow keys or A and D. In level 3+, catch a Snipe pickup, then press X to fire a vertical beam through the bricks.</p>
   </main>
 
   <!-- The order matters: game.js goes first because the other files use its settings. -->

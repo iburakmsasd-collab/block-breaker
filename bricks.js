@@ -10,17 +10,26 @@ const BRICK_GAP = 6;     // empty space between bricks
 const BRICKS_TOP = 50;   // how far down the first row starts
 const BRICK_CHECKER_COLUMNS = 12;
 const BRICK_CHECKER_ROWS = 6;
+const POWERUP_STYLES = {
+  multiball: { color: "#35d06f", darkerColor: "#176b3a" },
+  spike: { color: "#ef4545", darkerColor: "#842626" },
+  snipe: { color: "#46b5dc", darkerColor: "#245d78" }
+};
 
 // Builds the list of bricks. Each brick is an object with an
 // x, y, width, and height.
 function makeBricks(level = 1) {
   const list = [];
   const specialIndexes = new Map();
-  if (level === 2) {
-    while (specialIndexes.size < 6) {
+  if (level >= 2) {
+    const specialTypes = level === 2
+      ? ["multiball", "multiball", "multiball", "spike", "spike", "spike"]
+      : ["multiball", "spike", "snipe"];
+    const specialCount = level === 2 ? 6 : 9;
+    while (specialIndexes.size < specialCount) {
       const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
       if (!specialIndexes.has(index)) {
-        specialIndexes.set(index, specialIndexes.size < 3 ? "multiball" : "spike");
+        specialIndexes.set(index, specialTypes[specialIndexes.size % specialTypes.length]);
       }
     }
   }
@@ -42,6 +51,7 @@ function makeBricks(level = 1) {
       const hue = Math.floor(Math.random() * 360);
       const index = row * BRICK_COLUMNS + col;
       const special = specialIndexes.get(index) || null;
+      const powerupStyle = special ? POWERUP_STYLES[special] : null;
       const needsTwoHits = !special && twoHitIndexes.has(index);
       const y = BRICKS_TOP + row * (BRICK_HEIGHT + BRICK_GAP);
       list.push({
@@ -51,8 +61,8 @@ function makeBricks(level = 1) {
         width: BRICK_WIDTH,
         height: BRICK_HEIGHT,
         hitstillbroken: needsTwoHits ? hitstillbroken : 1,
-        color: special === "multiball" ? "#35d06f" : special === "spike" ? "#ef4545" : `hsl(${hue}, 75%, 55%)`,
-        darkerColor: needsTwoHits ? `hsl(${hue}, 75%, 25%)` : null,
+        color: powerupStyle ? powerupStyle.color : `hsl(${hue}, 75%, 55%)`,
+        darkerColor: powerupStyle ? powerupStyle.darkerColor : needsTwoHits ? `hsl(${hue}, 75%, 25%)` : null,
         special
       });
     }
@@ -64,7 +74,10 @@ function makeBricks(level = 1) {
 // Draws every brick in the list.
 function drawBricks() {
   for (const brick of bricks) {
-    if (!brick.darkerColor) {
+    if (brick.special) {
+      ctx.fillStyle = brick.color;
+      ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+    } else if (!brick.darkerColor) {
       ctx.fillStyle = brick.color;
       ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
     } else {
@@ -73,7 +86,7 @@ function drawBricks() {
       for (let row = 0; row < BRICK_CHECKER_ROWS; row++) {
         for (let column = 0; column < BRICK_CHECKER_COLUMNS; column++) {
           const isDarkerTile = (row + column) % 2 === 1;
-          if (brick.hitstillbroken === 1 && !isDarkerTile) {
+          if (!brick.special && brick.hitstillbroken === 1 && !isDarkerTile) {
             continue;
           }
 
@@ -89,15 +102,26 @@ function drawBricks() {
     }
 
     if (brick.special) {
-      const symbol = brick.special === "multiball" ? "+" : "!";
-      ctx.font = "bold 18px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "black";
-      ctx.fillStyle = "white";
-      ctx.strokeText(symbol, brick.x + brick.width / 2, brick.y + brick.height / 2);
-      ctx.fillText(symbol, brick.x + brick.width / 2, brick.y + brick.height / 2);
+      const centerX = brick.x + brick.width / 2;
+      const centerY = brick.y + brick.height / 2;
+      ctx.fillStyle = brick.darkerColor;
+      if (brick.special === "multiball") {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (brick.special === "spike") {
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY - 9);
+        ctx.lineTo(centerX + 7, centerY + 8);
+        ctx.lineTo(centerX - 7, centerY + 8);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.font = "bold 14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("SNIPE", centerX, centerY);
+      }
     }
   }
 }

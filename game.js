@@ -8,9 +8,16 @@
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const levelCodeForm = document.getElementById("level-code-form");
+const levelCodeInput = document.getElementById("level-code");
 
 const WIDTH = canvas.width;   // 600
 const HEIGHT = canvas.height; // 450
+
+const GameState = {
+  lives: 3,
+  blocksBroken: 0
+};
 
 
 // ------------------------------------------------------------
@@ -57,12 +64,12 @@ const paddle = {
 // ------------------------------------------------------------
 let bricks = [];
 let particles = [];
-let blocksBroken = 0;
-let lives = 3;
 let deathScreen = false;
 let fallingHearts = [];
 let fallingPowerups = [];
 let fallingSpikes = [];
+let snipeBeams = [];
+let snipeAmmo = 0;
 let level = 1;
 let levelTransition = false;
 let levelTransitionFrame = 0;
@@ -77,17 +84,25 @@ let paddleSlowFrames = 0;
 const keys = {};
 
 document.addEventListener("keydown", function (event) {
+  if (levelCodeForm.contains(event.target)) {
+    return;
+  }
   keys[event.key.toLowerCase()] = true;
   if (event.code === "Enter" && deathScreen) {
     event.preventDefault();
-    if (lives === 0) {
+    if (GameState.lives === 0) {
       resetGame();
     }
     deathScreen = false;
   }
   if (event.code === "Enter" && levelComplete) {
     event.preventDefault();
-    resetGame();
+    levelComplete = false;
+    beginLevel(level + 1);
+  }
+  if (event.key.toLowerCase() === "x") {
+    event.preventDefault();
+    fireSnipe();
   }
   if (event.code === "Space") {
     event.preventDefault();
@@ -109,6 +124,22 @@ document.addEventListener("keyup", function (event) {
   keys[event.key.toLowerCase()] = false;
 });
 
+levelCodeInput.addEventListener("keydown", function (event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    levelCodeForm.requestSubmit();
+  }
+});
+
+levelCodeForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+  if (levelCodeInput.value === "2442" && !deathScreen && !levelTransition && !levelComplete) {
+    levelComplete = false;
+    beginLevel(level + 1);
+  }
+  levelCodeInput.value = "";
+});
+
 
 // ------------------------------------------------------------
 // UPDATE: runs 60 times every second. Move things, then check
@@ -128,6 +159,7 @@ function update() {
   updatePaddleSlow();
   updateFallingPowerups();
   updateFallingSpikes();
+  updateSnipeBeams();
   movePaddle();
   for (const ball of balls) {
     moveBall(ball);
@@ -139,8 +171,8 @@ function update() {
   // Losing the ball costs a life and pauses until the player continues.
   balls = balls.filter((ball) => ball.y <= HEIGHT);
   if (balls.length === 0) {
-    const lostHeartIndex = lives - 1;
-    if (lives > 0) {
+    const lostHeartIndex = GameState.lives - 1;
+    if (GameState.lives > 0) {
       fallingHearts.push({
         x: WIDTH - 16 - 18 - lostHeartIndex * 26,
         y: HEIGHT - 55,
@@ -151,7 +183,7 @@ function update() {
         age: 0
       });
     }
-    lives = Math.max(0, lives - 1);
+    GameState.lives = Math.max(0, GameState.lives - 1);
     resetBall();
     deathScreen = true;
   }
@@ -159,9 +191,11 @@ function update() {
   updateParticles();
   if (!deathScreen && bricks.length === 0) {
     if (level === 1) {
-      beginLevelTwo();
+      beginLevel(2);
     } else {
-      lives += 1;
+      if (level === 2) {
+        GameState.lives += 1;
+      }
       levelComplete = true;
       resetBall();
     }
@@ -175,8 +209,10 @@ function resetGame() {
   fallingHearts = [];
   fallingPowerups = [];
   fallingSpikes = [];
-  blocksBroken = 0;
-  lives = 3;
+  GameState.blocksBroken = 0;
+  GameState.lives = 3;
+  snipeBeams = [];
+  snipeAmmo = 0;
   deathScreen = false;
   levelTransition = false;
   levelComplete = false;
@@ -186,8 +222,8 @@ function resetGame() {
   resetBall();
 }
 
-function beginLevelTwo() {
-  level = 2;
+function beginLevel(nextLevel) {
+  level = nextLevel;
   bricks = makeBricks(level);
   for (const brick of bricks) {
     brick.targetY = brick.y;
@@ -197,6 +233,7 @@ function beginLevelTwo() {
   levelTransitionFrame = 0;
   fallingPowerups = [];
   fallingSpikes = [];
+  snipeBeams = [];
   resetBall();
 }
 
@@ -268,22 +305,50 @@ function updateFallingPowerups() {
     const powerup = fallingPowerups[index];
     powerup.y += powerup.vy;
     if (boxesTouch(powerup, paddle)) {
-      const sourceBall = balls[0];
-      const speed = Math.hypot(sourceBall.vx, sourceBall.vy) || BALL_SPEED;
-      for (const direction of [-1, 1]) {
-        const horizontalSpeed = speed * 0.55 * direction;
-        balls.push({
-          ...sourceBall,
-          x: sourceBall.x + direction * 8,
-          vx: horizontalSpeed,
-          vy: -Math.sqrt(speed * speed - horizontalSpeed * horizontalSpeed)
-        });
+      if (powerup.type === "multiball") {
+        const sourceBall = balls[0];
+        const speed = Math.hypot(sourceBall.vx, sourceBall.vy) || BALL_SPEED;
+        for (const direction of [-1, 1]) {
+          const horizontalSpeed = speed * 0.55 * direction;
+          balls.push({
+            x: paddle.x + paddle.width / 2 - sourceBall.width / 2 + direction * 8,
+            y: paddle.y - sourceBall.height,
+            width: sourceBall.width,
+            height: sourceBall.height,
+            vx: horizontalSpeed,
+            vy: -Math.sqrt(speed * speed - horizontalSpeed * horizontalSpeed)
+          });
+        }
+      } else if (powerup.type === "snipe") {
+        snipeAmmo += 3;
       }
       fallingPowerups.splice(index, 1);
     } else if (powerup.y > HEIGHT) {
       fallingPowerups.splice(index, 1);
     }
   }
+}
+
+function fireSnipe() {
+  if (snipeAmmo <= 0 || deathScreen || levelTransition || levelComplete) {
+    return;
+  }
+  snipeAmmo -= 1;
+  const x = paddle.x + paddle.width / 2;
+  const beamHalfWidth = 6;
+  snipeBeams.push({ x, frames: 8 });
+  for (const brick of [...bricks]) {
+    if (x + beamHalfWidth >= brick.x && x - beamHalfWidth <= brick.x + brick.width) {
+      destroyBrick(brick);
+    }
+  }
+}
+
+function updateSnipeBeams() {
+  for (const beam of snipeBeams) {
+    beam.frames -= 1;
+  }
+  snipeBeams = snipeBeams.filter((beam) => beam.frames > 0);
 }
 
 function updateFallingSpikes() {
@@ -308,9 +373,19 @@ function updateFallingSpikes() {
 }
 
 function onBrickDestroyed(brick) {
-  blocksBroken += 1;
+  GameState.blocksBroken += 1;
   if (brick.special === "multiball") {
     fallingPowerups.push({
+      type: brick.special,
+      x: brick.x + brick.width / 2 - 10,
+      y: brick.y + brick.height / 2 - 10,
+      width: 20,
+      height: 20,
+      vy: 2.5
+    });
+  } else if (brick.special === "snipe") {
+    fallingPowerups.push({
+      type: brick.special,
       x: brick.x + brick.width / 2 - 10,
       y: brick.y + brick.height / 2 - 10,
       width: 20,
@@ -375,6 +450,7 @@ function draw() {
   }
 
   drawBricks();  // bricks.js
+  drawSnipeBeams();
   drawParticles();
   drawFallingPowerups();
   drawFallingSpikes();
@@ -393,13 +469,19 @@ function drawHud() {
   ctx.font = "18px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(`Blocks broken: ${blocksBroken}`, 16, 14);
+  ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, 16, 14);
+  if (snipeAmmo > 0) {
+    ctx.textAlign = "center";
+    ctx.font = "14px sans-serif";
+    ctx.fillText(`SNIPE AMMO ${snipeAmmo} | X TO FIRE`, WIDTH / 2, 14);
+    ctx.font = "18px sans-serif";
+  }
   ctx.textAlign = "right";
   ctx.fillText(`Level: ${level}`, WIDTH - 16, 14);
 
   const heartWidth = 22;
   const heartHeight = 20;
-  for (let index = 0; index < lives; index++) {
+  for (let index = 0; index < GameState.lives; index++) {
     const x = WIDTH - 16 - heartWidth - index * 28;
     drawHeart(x, HEIGHT - 55, heartWidth, heartHeight);
   }
@@ -424,21 +506,49 @@ function drawHeart(x, y, width, height) {
   ctx.bezierCurveTo(x + width * 0.62, y - height * 0.06, x + width, y + height * 0.02, x + width, y + height * 0.31);
   ctx.bezierCurveTo(x + width, y + height * 0.56, x + width * 0.68, y + height * 0.82, x + width / 2, y + height);
   ctx.fill();
-  ctx.strokeStyle = "black";
+  ctx.strokeStyle = "grey";
   ctx.lineWidth = 2;
   ctx.stroke();
 }
 
 function drawFallingPowerups() {
   for (const powerup of fallingPowerups) {
-    ctx.fillStyle = "#35d06f";
-    ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
-    ctx.fillStyle = "black";
-    ctx.font = "bold 16px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("+", powerup.x + powerup.width / 2, powerup.y + powerup.height / 2);
+    const centerX = powerup.x + powerup.width / 2;
+    const centerY = powerup.y + powerup.height / 2;
+    if (powerup.type === "multiball") {
+      ctx.fillStyle = "#35d06f";
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      ctx.fillStyle = "black";
+      ctx.font = "bold 18px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("+", centerX, centerY);
+    } else {
+      ctx.fillStyle = "#46b5dc";
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      ctx.fillStyle = "white";
+      ctx.fillRect(centerX - 2, centerY - 5, 4, 11);
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY - 9);
+      ctx.lineTo(centerX + 5, centerY - 3);
+      ctx.lineTo(centerX - 5, centerY - 3);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
+}
+
+function drawSnipeBeams() {
+  ctx.save();
+  ctx.strokeStyle = "#8beaff";
+  ctx.lineWidth = 12;
+  for (const beam of snipeBeams) {
+    ctx.beginPath();
+    ctx.moveTo(beam.x, 0);
+    ctx.lineTo(beam.x, paddle.y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawFallingSpikes() {
@@ -466,9 +576,9 @@ function drawDeathScreen() {
   ctx.font = "bold 34px sans-serif";
   ctx.fillText("You died!", WIDTH / 2, HEIGHT / 2 - 42);
   ctx.font = "20px sans-serif";
-  ctx.fillText(`Blocks broken: ${blocksBroken}`, WIDTH / 2, HEIGHT / 2 + 2);
+  ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, WIDTH / 2, HEIGHT / 2 + 2);
   ctx.font = "16px sans-serif";
-  ctx.fillText(lives > 0 ? "Press Enter to continue" : "Press Enter to restart", WIDTH / 2, HEIGHT / 2 + 42);
+  ctx.fillText(GameState.lives > 0 ? "Press Enter to continue" : "Press Enter to restart", WIDTH / 2, HEIGHT / 2 + 42);
 }
 
 function drawLevelComplete() {
@@ -478,10 +588,10 @@ function drawLevelComplete() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = "bold 30px sans-serif";
-  ctx.fillText("Level 2 complete!", WIDTH / 2, HEIGHT / 2 - 32);
+  ctx.fillText(`Level ${level} complete!`, WIDTH / 2, HEIGHT / 2 - 32);
   ctx.font = "18px sans-serif";
-  ctx.fillText("Extra heart earned", WIDTH / 2, HEIGHT / 2 + 4);
-  ctx.fillText("Press Enter to restart", WIDTH / 2, HEIGHT / 2 + 38);
+  ctx.fillText(level === 2 ? "Extra heart earned" : "", WIDTH / 2, HEIGHT / 2 + 4);
+  ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 38);
 }
 
 function drawParticles() {
