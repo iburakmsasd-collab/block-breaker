@@ -12,7 +12,14 @@
       <label for="level-code">Code</label>
       <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off">
     </form>
-    <canvas id="game" width="600" height="450" aria-label="Block Breaker game"></canvas>
+    <section class="game-stage" aria-label="Block Breaker">
+      <canvas id="game" width="600" height="450" aria-label="Block Breaker game"></canvas>
+      <h1 id="game-title" class="game-title">Block Breaker</h1>
+      <div id="start-menu" class="start-menu">
+        <canvas id="menu-canvas" width="600" height="450" aria-hidden="true"></canvas>
+        <button id="start-game" type="button">Start Game</button>
+      </div>
+    </section>
     <p>Move with the arrow keys or A and D. In level 3+, catch a Snipe pickup, then press X to fire a vertical beam through the bricks.</p>
   </main>
 

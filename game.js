@@ -10,6 +10,11 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const levelCodeForm = document.getElementById("level-code-form");
 const levelCodeInput = document.getElementById("level-code");
+const startMenu = document.getElementById("start-menu");
+const startGameButton = document.getElementById("start-game");
+const gameTitle = document.getElementById("game-title");
+const menuCanvas = document.getElementById("menu-canvas");
+const menuCtx = menuCanvas.getContext("2d");
 
 const WIDTH = canvas.width;   // 600
 const HEIGHT = canvas.height; // 450
@@ -70,11 +75,13 @@ let fallingPowerups = [];
 let fallingSpikes = [];
 let snipeBeams = [];
 let snipeAmmo = 0;
+let paddleHitTexts = [];
+let gameStarted = false;
 let level = 1;
 let levelTransition = false;
 let levelTransitionFrame = 0;
 let levelComplete = false;
-let paddleSlowFrames = 0;
+let paddleSlowed = false;
 
 
 // ------------------------------------------------------------
@@ -85,6 +92,12 @@ const keys = {};
 
 document.addEventListener("keydown", function (event) {
   if (levelCodeForm.contains(event.target)) {
+    return;
+  }
+  if (!gameStarted) {
+    if (event.key.startsWith("Arrow")) {
+      event.preventDefault();
+    }
     return;
   }
   keys[event.key.toLowerCase()] = true;
@@ -120,6 +133,20 @@ document.addEventListener("keydown", function (event) {
   }
 });
 
+startGameButton.addEventListener("click", function () {
+  startGameButton.disabled = true;
+  startMenu.classList.add("is-starting");
+  gameTitle.classList.add("is-started");
+});
+
+startMenu.addEventListener("animationend", function (event) {
+  if (event.target !== startMenu) {
+    return;
+  }
+  gameStarted = true;
+  startMenu.hidden = true;
+});
+
 document.addEventListener("keyup", function (event) {
   keys[event.key.toLowerCase()] = false;
 });
@@ -147,8 +174,10 @@ levelCodeForm.addEventListener("submit", function (event) {
 // ------------------------------------------------------------
 function update() {
   updateFallingHearts();
+  updateParticles();
+  updatePaddleHitTexts();
 
-  if (deathScreen || levelComplete) {
+  if (!gameStarted || deathScreen || levelComplete) {
     return;
   }
   if (levelTransition) {
@@ -156,7 +185,6 @@ function update() {
     return;
   }
 
-  updatePaddleSlow();
   updateFallingPowerups();
   updateFallingSpikes();
   updateSnipeBeams();
@@ -188,7 +216,6 @@ function update() {
     deathScreen = true;
   }
 
-  updateParticles();
   if (!deathScreen && bricks.length === 0) {
     if (level === 1) {
       beginLevel(2);
@@ -196,6 +223,7 @@ function update() {
       if (level === 2) {
         GameState.lives += 1;
       }
+      resetPaddleSlow();
       levelComplete = true;
       resetBall();
     }
@@ -213,17 +241,19 @@ function resetGame() {
   GameState.lives = 3;
   snipeBeams = [];
   snipeAmmo = 0;
+  paddleHitTexts = [];
   deathScreen = false;
   levelTransition = false;
   levelComplete = false;
-  paddleSlowFrames = 0;
-  paddle.speed = PADDLE_SPEED;
+  resetPaddleSlow();
   paddle.x = WIDTH / 2 - paddle.width / 2;
   resetBall();
 }
 
 function beginLevel(nextLevel) {
   level = nextLevel;
+  snipeAmmo = 0;
+  resetPaddleSlow();
   bricks = makeBricks(level);
   for (const brick of bricks) {
     brick.targetY = brick.y;
@@ -291,11 +321,18 @@ function updateFallingHearts() {
   }
 }
 
-function updatePaddleSlow() {
-  if (paddleSlowFrames > 0) {
-    paddleSlowFrames -= 1;
-    if (paddleSlowFrames === 0) {
-      paddle.speed = PADDLE_SPEED;
+function resetPaddleSlow() {
+  paddleSlowed = false;
+  paddle.speed = PADDLE_SPEED;
+}
+
+function updatePaddleHitTexts() {
+  for (let index = paddleHitTexts.length - 1; index >= 0; index--) {
+    const text = paddleHitTexts[index];
+    text.y -= 0.8;
+    text.life -= 1;
+    if (text.life <= 0) {
+      paddleHitTexts.splice(index, 1);
     }
   }
 }
@@ -363,8 +400,14 @@ function updateFallingSpikes() {
     }
 
     if (boxesTouch(spike, paddle)) {
-      paddleSlowFrames = 10 * 60;
+      paddleSlowed = true;
       paddle.speed = PADDLE_SPEED * 0.75;
+      paddleHitTexts.push({
+        x: paddle.x + paddle.width / 2,
+        y: paddle.y - 6,
+        life: 60,
+        maxLife: 60
+      });
       fallingSpikes.splice(index, 1);
     } else if (spike.y > HEIGHT) {
       fallingSpikes.splice(index, 1);
@@ -441,7 +484,7 @@ function draw() {
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  ctx.fillStyle = "white";
+  ctx.fillStyle = paddleSlowed ? "#ef4545" : "white";
   ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
   for (const ball of balls) {
     ctx.beginPath();
@@ -454,6 +497,7 @@ function draw() {
   drawParticles();
   drawFallingPowerups();
   drawFallingSpikes();
+  drawPaddleHitTexts();
 
   if (deathScreen) {
     drawDeathScreen();
@@ -566,6 +610,19 @@ function drawFallingSpikes() {
   }
 }
 
+function drawPaddleHitTexts() {
+  ctx.save();
+  ctx.fillStyle = "#ef4545";
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  for (const text of paddleHitTexts) {
+    ctx.globalAlpha = text.life / text.maxLife;
+    ctx.fillText("-25% speed", text.x, text.y);
+  }
+  ctx.restore();
+}
+
 function drawDeathScreen() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -629,6 +686,9 @@ function frame(now) {
   }
 
   draw();
+  if (!gameStarted) {
+    drawMenuCanvas();
+  }
   requestAnimationFrame(frame);
 }
 
@@ -637,6 +697,13 @@ function start() {
   resetBall();
   lastTime = performance.now();
   requestAnimationFrame(frame);
+}
+
+function drawMenuCanvas() {
+  menuCtx.drawImage(canvas, 0, 0, menuCanvas.width, menuCanvas.height);
+  menuCtx.strokeStyle = "white";
+  menuCtx.lineWidth = 2;
+  menuCtx.strokeRect(64, 76, 472, 298);
 }
 
 // Wait until all three script files have loaded, then start.
