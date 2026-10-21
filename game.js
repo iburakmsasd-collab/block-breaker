@@ -12,17 +12,38 @@ const levelCodeForm = document.getElementById("level-code-form");
 const levelCodeInput = document.getElementById("level-code");
 const startMenu = document.getElementById("start-menu");
 const startGameButton = document.getElementById("start-game");
+const gameBoard = document.querySelector(".game-board");
+const openShopButton = document.getElementById("open-shop");
+const closeShopButton = document.getElementById("close-shop");
+const buySniperButton = document.getElementById("buy-sniper");
+const buyMultiballButton = document.getElementById("buy-multiball");
+const shopMenu = document.getElementById("shop-menu");
+const shopStatus = document.getElementById("shop-status");
+const creditBalance = document.getElementById("credit-balance");
 const gameTitle = document.getElementById("game-title");
 const menuCanvas = document.getElementById("menu-canvas");
 const menuCtx = menuCanvas.getContext("2d");
 
 const WIDTH = canvas.width;   // 600
 const HEIGHT = canvas.height; // 450
+const SNIPER_UPGRADE_COST = 500;
+const MULTIBALL_UPGRADE_COST = 200;
+const SHOP_STORAGE_KEY = "block-breaker-shop";
 
 const GameState = {
   lives: 3,
-  blocksBroken: 0
+  blocksBroken: 0,
+  credits: 0
 };
+
+let shopStorageError = false;
+const savedShopProgress = loadShopProgress();
+GameState.credits = savedShopProgress.credits;
+let sniperUpgradeOwned = savedShopProgress.sniperUpgradeOwned;
+let sniperUpgradeEquipped = savedShopProgress.sniperUpgradeEquipped;
+let multiballUpgradeOwned = savedShopProgress.multiballUpgradeOwned;
+let multiballUpgradeEquipped = savedShopProgress.multiballUpgradeEquipped;
+updateShopDisplay();
 
 
 // ------------------------------------------------------------
@@ -34,6 +55,7 @@ const GameState = {
 const BALL_SPEED = 6;
 let BALL_GRAVITY = 0.01;
 const PADDLE_SPEED = 8;
+const PADDLE_SLOW_DURATION = 15000;
 
 let balls = [];
 let ballLaunched = false;
@@ -78,10 +100,15 @@ let snipeAmmo = 0;
 let paddleHitTexts = [];
 let gameStarted = false;
 let level = 1;
+let livesLostThisRound = 0;
+let creditsEarnedThisLevel = 0;
 let levelTransition = false;
 let levelTransitionFrame = 0;
 let levelComplete = false;
 let paddleSlowed = false;
+let paddleSlowUntil = 0;
+let shopOpen = false;
+let equippedBrickOriginals = new Map();
 
 
 // ------------------------------------------------------------
@@ -91,6 +118,14 @@ let paddleSlowed = false;
 const keys = {};
 
 document.addEventListener("keydown", function (event) {
+  if (shopOpen && event.key === "Escape") {
+    event.preventDefault();
+    closeShop();
+    return;
+  }
+  if (shopOpen) {
+    return;
+  }
   if (levelCodeForm.contains(event.target)) {
     return;
   }
@@ -135,16 +170,24 @@ document.addEventListener("keydown", function (event) {
 
 startGameButton.addEventListener("click", function () {
   startGameButton.disabled = true;
+  gameBoard.classList.add("menu-dismissing");
   startMenu.classList.add("is-starting");
   gameTitle.classList.add("is-started");
 });
+
+openShopButton.addEventListener("click", openShop);
+closeShopButton.addEventListener("click", closeShop);
+buySniperButton.addEventListener("click", purchaseSniperUpgrade);
+buyMultiballButton.addEventListener("click", purchaseMultiballUpgrade);
 
 startMenu.addEventListener("animationend", function (event) {
   if (event.target !== startMenu) {
     return;
   }
   gameStarted = true;
-  startMenu.hidden = true;
+  levelCodeInput.disabled = false;
+  startMenu.remove();
+  gameBoard.classList.remove("menu-dismissing");
 });
 
 document.addEventListener("keyup", function (event) {
@@ -160,7 +203,7 @@ levelCodeInput.addEventListener("keydown", function (event) {
 
 levelCodeForm.addEventListener("submit", function (event) {
   event.preventDefault();
-  if (levelCodeInput.value === "2442" && !deathScreen && !levelTransition && !levelComplete) {
+  if (gameStarted && levelCodeInput.value === "2442" && !deathScreen && !levelTransition && !levelComplete) {
     levelComplete = false;
     beginLevel(level + 1);
   }
@@ -173,6 +216,12 @@ levelCodeForm.addEventListener("submit", function (event) {
 // what they touched.
 // ------------------------------------------------------------
 function update() {
+  if (shopOpen) {
+    return;
+  }
+  if (paddleSlowed && performance.now() >= paddleSlowUntil) {
+    resetPaddleSlow();
+  }
   updateFallingHearts();
   updateParticles();
   updatePaddleHitTexts();
@@ -212,33 +261,34 @@ function update() {
       });
     }
     GameState.lives = Math.max(0, GameState.lives - 1);
+    livesLostThisRound += 1;
     resetBall();
     deathScreen = true;
   }
 
   if (!deathScreen && bricks.length === 0) {
-    if (level === 1) {
-      beginLevel(2);
-    } else {
-      if (level === 2) {
-        GameState.lives += 1;
-      }
-      resetPaddleSlow();
-      levelComplete = true;
-      resetBall();
+    creditsEarnedThisLevel = awardRoundCredits();
+    livesLostThisRound = 0;
+    if (level === 2) {
+      GameState.lives += 1;
     }
+    resetPaddleSlow();
+    levelComplete = true;
+    resetBall();
   }
 }
 
 function resetGame() {
   level = 1;
-  bricks = makeBricks(level);
+  bricks = makeBricksForRound(level);
   particles = [];
   fallingHearts = [];
   fallingPowerups = [];
   fallingSpikes = [];
   GameState.blocksBroken = 0;
   GameState.lives = 3;
+  livesLostThisRound = 0;
+  creditsEarnedThisLevel = 0;
   snipeBeams = [];
   snipeAmmo = 0;
   paddleHitTexts = [];
@@ -254,7 +304,7 @@ function beginLevel(nextLevel) {
   level = nextLevel;
   snipeAmmo = 0;
   resetPaddleSlow();
-  bricks = makeBricks(level);
+  bricks = makeBricksForRound(level);
   for (const brick of bricks) {
     brick.targetY = brick.y;
     brick.y -= HEIGHT;
@@ -324,6 +374,7 @@ function updateFallingHearts() {
 function resetPaddleSlow() {
   paddleSlowed = false;
   paddle.speed = PADDLE_SPEED;
+  paddleSlowUntil = 0;
 }
 
 function updatePaddleHitTexts() {
@@ -357,7 +408,7 @@ function updateFallingPowerups() {
           });
         }
       } else if (powerup.type === "snipe") {
-        snipeAmmo += 3;
+        snipeAmmo += 1;
       }
       fallingPowerups.splice(index, 1);
     } else if (powerup.y > HEIGHT) {
@@ -402,6 +453,7 @@ function updateFallingSpikes() {
     if (boxesTouch(spike, paddle)) {
       paddleSlowed = true;
       paddle.speed = PADDLE_SPEED * 0.75;
+      paddleSlowUntil = performance.now() + PADDLE_SLOW_DURATION;
       paddleHitTexts.push({
         x: paddle.x + paddle.width / 2,
         y: paddle.y - 6,
@@ -447,9 +499,13 @@ function onBrickDestroyed(brick) {
   }
 }
 
+function movePaddleLeft() {
+  paddle.x = paddle.x - paddle.speed;
+}
+
 function movePaddle() {
   if (keys["arrowleft"] || keys["a"]) {
-    paddle.x = paddle.x - paddle.speed;
+    movePaddleLeft();
   }
   if (keys["arrowright"] || keys["d"]) {
     paddle.x = paddle.x + paddle.speed;
@@ -645,10 +701,14 @@ function drawLevelComplete() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = "bold 30px sans-serif";
-  ctx.fillText(`Level ${level} complete!`, WIDTH / 2, HEIGHT / 2 - 32);
+  ctx.fillText(`Level ${level} complete!`, WIDTH / 2, HEIGHT / 2 - 58);
   ctx.font = "18px sans-serif";
-  ctx.fillText(level === 2 ? "Extra heart earned" : "", WIDTH / 2, HEIGHT / 2 + 4);
-  ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 38);
+  ctx.fillText(`Credits earned: +${creditsEarnedThisLevel}`, WIDTH / 2, HEIGHT / 2 - 18);
+  if (level === 2) {
+    ctx.fillText("Extra heart earned", WIDTH / 2, HEIGHT / 2 + 12);
+  }
+  ctx.font = "16px sans-serif";
+  ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 48);
 }
 
 function drawParticles() {
@@ -693,17 +753,223 @@ function frame(now) {
 }
 
 function start() {
-  bricks = makeBricks(level);  // bricks.js
+  bricks = makeBricksForRound(level);  // bricks.js
   resetBall();
   lastTime = performance.now();
   requestAnimationFrame(frame);
 }
 
+function loadShopProgress() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SHOP_STORAGE_KEY) || "{}");
+    const sniperOwned = saved.sniperUpgradeOwned === true;
+    const multiballOwned = saved.multiballUpgradeOwned === true;
+    return {
+      credits: Number.isSafeInteger(saved.credits) && saved.credits >= 0 ? saved.credits : 0,
+      sniperUpgradeOwned: sniperOwned,
+      sniperUpgradeEquipped: sniperOwned && (
+        typeof saved.sniperUpgradeEquipped === "boolean"
+          ? saved.sniperUpgradeEquipped
+          : sniperOwned
+      ),
+      multiballUpgradeOwned: multiballOwned,
+      multiballUpgradeEquipped: multiballOwned && saved.multiballUpgradeEquipped === true
+    };
+  } catch (error) {
+    console.error("Could not load saved shop progress.", error);
+    shopStorageError = true;
+    shopStatus.textContent = "Saved shop progress could not be loaded.";
+    return {
+      credits: 0,
+      sniperUpgradeOwned: false,
+      sniperUpgradeEquipped: false,
+      multiballUpgradeOwned: false,
+      multiballUpgradeEquipped: false
+    };
+  }
+}
+
+function persistShopProgress() {
+  try {
+    window.localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify({
+      credits: GameState.credits,
+      sniperUpgradeOwned,
+      sniperUpgradeEquipped,
+      multiballUpgradeOwned,
+      multiballUpgradeEquipped
+    }));
+    shopStorageError = false;
+    return true;
+  } catch (error) {
+    console.error("Could not save shop progress.", error);
+    shopStorageError = true;
+    shopStatus.textContent = "Could not save shop progress; it will be lost when you leave.";
+    return false;
+  }
+}
+
+function updateShopDisplay() {
+  const balanceText = `Credits: ${GameState.credits}`;
+  creditBalance.textContent = balanceText;
+  buySniperButton.disabled = !sniperUpgradeOwned && GameState.credits < SNIPER_UPGRADE_COST;
+  buySniperButton.setAttribute("aria-pressed", String(sniperUpgradeOwned && sniperUpgradeEquipped));
+  buySniperButton.textContent = sniperUpgradeOwned
+    ? (sniperUpgradeEquipped ? "Equipped" : "Equip")
+    : `Buy · ${SNIPER_UPGRADE_COST}`;
+  buyMultiballButton.disabled = !multiballUpgradeOwned && GameState.credits < MULTIBALL_UPGRADE_COST;
+  buyMultiballButton.setAttribute("aria-pressed", String(multiballUpgradeOwned && multiballUpgradeEquipped));
+  buyMultiballButton.textContent = multiballUpgradeOwned
+    ? (multiballUpgradeEquipped ? "Equipped" : "Equip")
+    : `Buy · ${MULTIBALL_UPGRADE_COST}`;
+}
+
+function makeBricksForRound(roundLevel) {
+  const roundBricks = makeBricks(roundLevel);
+  equippedBrickOriginals = new Map();
+  if (sniperUpgradeEquipped) {
+    addEquippedBricks(roundBricks, "snipe");
+  }
+  if (multiballUpgradeEquipped) {
+    const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
+    addEquippedBricks(roundBricks, "multiball", multiballBrickCount);
+  }
+  return roundBricks;
+}
+
+function addEquippedBricks(roundBricks, special, count = 1) {
+  const style = POWERUP_STYLES[special];
+  const availableBricks = roundBricks.filter((brick) => !brick.special);
+  const originals = equippedBrickOriginals.get(special) || [];
+  const addCount = Math.min(count, availableBricks.length);
+
+  for (let index = 0; index < addCount; index++) {
+    const availableIndex = Math.floor(Math.random() * availableBricks.length);
+    const [brick] = availableBricks.splice(availableIndex, 1);
+    originals.push({
+      brick,
+      color: brick.color,
+      darkerColor: brick.darkerColor,
+      hitstillbroken: brick.hitstillbroken
+    });
+    brick.special = special;
+    brick.color = style.color;
+    brick.darkerColor = style.darkerColor;
+    brick.hitstillbroken = 1;
+  }
+
+  equippedBrickOriginals.set(special, originals);
+  return addCount;
+}
+
+function removeEquippedBrick(special) {
+  const originals = equippedBrickOriginals.get(special);
+  if (!originals) {
+    return;
+  }
+
+  for (const { brick, color, darkerColor, hitstillbroken } of originals) {
+    brick.special = null;
+    brick.color = color;
+    brick.darkerColor = darkerColor;
+    brick.hitstillbroken = hitstillbroken;
+  }
+  equippedBrickOriginals.delete(special);
+}
+
+function awardRoundCredits() {
+  const creditsByLivesLost = [100, 60, 30, 0];
+  const earned = creditsByLivesLost[Math.min(livesLostThisRound, 3)];
+  GameState.credits += earned;
+  updateShopDisplay();
+  persistShopProgress();
+  return earned;
+}
+
+function openShop() {
+  shopOpen = true;
+  shopMenu.hidden = false;
+  if (shopStorageError) {
+    shopStatus.textContent = "Shop progress could not be saved; changes may be lost when you leave.";
+  } else {
+    shopStatus.textContent = "";
+  }
+  closeShopButton.focus();
+}
+
+function closeShop() {
+  shopOpen = false;
+  shopMenu.hidden = true;
+  if (gameStarted) {
+    canvas.focus();
+  } else {
+    openShopButton.focus();
+  }
+}
+
+function purchaseSniperUpgrade() {
+  purchaseOrToggleShopItem({
+    owned: sniperUpgradeOwned,
+    equipped: sniperUpgradeEquipped,
+    cost: SNIPER_UPGRADE_COST,
+    special: "snipe",
+    onPurchase: () => {
+      sniperUpgradeOwned = true;
+    },
+    onEquip: (equipped) => {
+      sniperUpgradeEquipped = equipped;
+    }
+  });
+}
+
+function purchaseMultiballUpgrade() {
+  purchaseOrToggleShopItem({
+    owned: multiballUpgradeOwned,
+    equipped: multiballUpgradeEquipped,
+    cost: MULTIBALL_UPGRADE_COST,
+    special: "multiball",
+    onPurchase: () => {
+      multiballUpgradeOwned = true;
+    },
+    onEquip: (equipped) => {
+      multiballUpgradeEquipped = equipped;
+    }
+  });
+}
+
+function purchaseOrToggleShopItem(item) {
+  if (!item.owned) {
+    if (GameState.credits < item.cost) {
+      return;
+    }
+
+    GameState.credits -= item.cost;
+    item.onPurchase();
+  } else {
+    const equipped = !item.equipped;
+    item.onEquip(equipped);
+    if (equipped) {
+      const count = item.special === "multiball"
+        ? Math.floor(Math.random() * 4) + 1
+        : 1;
+      addEquippedBricks(bricks, item.special, count);
+    } else {
+      removeEquippedBrick(item.special);
+    }
+  }
+
+  updateShopDisplay();
+  shopStatus.textContent = persistShopProgress()
+    ? ""
+    : "Shop progress could not be saved; changes may be lost when you leave.";
+}
+
 function drawMenuCanvas() {
-  menuCtx.drawImage(canvas, 0, 0, menuCanvas.width, menuCanvas.height);
+  menuCtx.clearRect(0, 0, menuCanvas.width, menuCanvas.height);
+  menuCtx.fillStyle = "black";
+  menuCtx.fillRect(48, 58.5, 504, 333);
   menuCtx.strokeStyle = "white";
   menuCtx.lineWidth = 2;
-  menuCtx.strokeRect(64, 76, 472, 298);
+  menuCtx.strokeRect(48, 58.5, 504, 333);
 }
 
 // Wait until all three script files have loaded, then start.

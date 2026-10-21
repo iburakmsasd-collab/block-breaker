@@ -9,18 +9,43 @@
 <body>
   <main>
     <form id="level-code-form" class="level-code">
+      <output id="credit-balance" class="credit-balance">Credits: 0</output>
       <label for="level-code">Code</label>
-      <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off">
+      <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off" disabled>
     </form>
     <section class="game-stage" aria-label="Block Breaker">
-      <canvas id="game" width="600" height="450" aria-label="Block Breaker game"></canvas>
-      <h1 id="game-title" class="game-title">Block Breaker</h1>
-      <div id="start-menu" class="start-menu">
-        <canvas id="menu-canvas" width="600" height="450" aria-hidden="true"></canvas>
-        <button id="start-game" type="button">Start Game</button>
+      <div class="game-board">
+        <canvas id="game" width="600" height="450" tabindex="-1" aria-label="Block Breaker game"></canvas>
+        <div id="start-menu" class="start-menu">
+          <canvas id="menu-canvas" width="600" height="450" aria-hidden="true"></canvas>
+          <button id="start-game" type="button">Start Game</button>
+          <button id="open-shop" type="button">Shop</button>
+        </div>
+        <section id="shop-menu" class="shop-menu" aria-labelledby="shop-title" hidden>
+          <h2 id="shop-title">Shop</h2>
+          <div class="shop-item">
+            <h3>Sniper Brick</h3>
+            <div class="shop-item-content">
+              <span class="sniper-brick-preview" aria-label="Sniper Brick preview">SNIPE</span>
+              <p>Collect it for 1 laser shot. Press X to break a column of blocks.</p>
+              <button id="buy-sniper" type="button">Buy · 500</button>
+            </div>
+          </div>
+          <div class="shop-item">
+            <h3>Multiball Brick</h3>
+            <div class="shop-item-content">
+              <span class="multiball-brick-preview" aria-label="Multiball Brick preview">●</span>
+              <p>Shoots 2 extra balls from the paddle.</p>
+              <button id="buy-multiball" type="button">Buy · 200</button>
+            </div>
+          </div>
+          <p id="shop-status" class="shop-status" aria-live="polite"></p>
+          <button id="close-shop" type="button">Back</button>
+        </section>
       </div>
+      <h1 id="game-title" class="game-title">Block Breaker</h1>
     </section>
-    <p>Move with the arrow keys or A and D. In level 3+, catch a Snipe pickup, then press X to fire a vertical beam through the bricks.</p>
+    <p>Move with the arrow keys or A and D. Catch a Snipe pickup, then press X to fire a vertical beam through the bricks.</p>
   </main>
 
   <!-- The order matters: game.js goes first because the other files use its settings. -->

@@ -30,6 +30,11 @@ main {
   font-size: 14px;
 }
 
+.credit-balance {
+  margin-right: auto;
+  font-weight: bold;
+}
+
 .level-code input {
   padding: 5px 8px;
   border: 1px solid #fff;
@@ -43,6 +48,14 @@ main {
 .game-stage {
   position: relative;
   margin-top: 56px;
+}
+
+.game-board {
+  position: relative;
+}
+
+.game-board.menu-dismissing {
+  overflow: hidden;
 }
 
 canvas {
@@ -60,10 +73,120 @@ canvas {
   display: grid;
   align-content: center;
   justify-items: center;
+  gap: 12px;
 }
 
 .start-menu[hidden] {
   display: none;
+}
+
+.shop-menu {
+  position: absolute;
+  top: 13%;
+  left: 8%;
+  z-index: 3;
+  display: flex;
+  width: 84%;
+  height: 74%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 2px solid #fff;
+  background: #000;
+}
+
+.shop-menu[hidden] {
+  display: none;
+}
+
+.shop-menu h2,
+.shop-item h3 {
+  margin: 0;
+}
+
+.shop-menu h2 {
+  font-size: 22px;
+}
+
+.shop-item {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 2px;
+  padding: 4px 8px;
+  border: 1px solid #fff;
+  text-align: left;
+}
+
+.shop-item-content {
+  display: flex;
+  align-items: center;
+  padding-left: 78px;
+  padding-right: 96px;
+  min-height: 32px;
+}
+
+.shop-item-content p {
+  flex: 1;
+  margin: 0;
+}
+
+.sniper-brick-preview {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  display: inline-flex;
+  width: 68px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  background: #46b5dc;
+  color: #245d78;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.multiball-brick-preview {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  display: inline-flex;
+  width: 68px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  background: #35d06f;
+  color: #176b3a;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.shop-item h3 {
+  margin: 0;
+  font-size: 16px;
+  text-align: center;
+}
+
+.shop-item p,
+.shop-status {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.shop-status {
+  min-height: 16px;
+  margin: 0;
+}
+
+.shop-menu > #close-shop {
+  align-self: center;
+  width: 190px;
+  min-height: 42px;
 }
 
 .game-title {
@@ -92,10 +215,12 @@ canvas {
 @keyframes menu-dismiss {
   to {
     opacity: 0;
+    transform: translateY(110%);
   }
 }
 
-.start-menu button {
+.start-menu button,
+.shop-menu button {
   position: relative;
   z-index: 1;
   padding: 10px 18px;
@@ -108,6 +233,32 @@ canvas {
   transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
 }
 
+.start-menu #start-game,
+.start-menu #open-shop {
+  width: 190px;
+  min-height: 42px;
+}
+
+.shop-item button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+
+.shop-menu .shop-item button:hover,
+.shop-menu .shop-item button:focus-visible {
+  transform: translateY(calc(-50% - 3px)) scale(1.04);
+}
+
+.shop-item button:disabled {
+  cursor: default;
+}
+
 .start-menu #menu-canvas {
   position: absolute;
   inset: 0;
@@ -115,12 +266,14 @@ canvas {
   width: 100%;
   height: 100%;
   border: 0;
-  background: #000;
+  background: transparent;
   pointer-events: none;
 }
 
 .start-menu button:hover,
-.start-menu button:focus-visible {
+.start-menu button:focus-visible,
+.shop-menu button:hover,
+.shop-menu button:focus-visible {
   transform: translateY(-3px) scale(1.04);
   background: #ef4545;
   border-color: #ef4545;

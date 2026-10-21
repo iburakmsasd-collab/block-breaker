@@ -22,10 +22,8 @@ function makeBricks(level = 1) {
   const list = [];
   const specialIndexes = new Map();
   if (level >= 2) {
-    const specialTypes = level === 2
-      ? ["multiball", "multiball", "multiball", "spike", "spike", "spike"]
-      : ["multiball", "spike", "snipe"];
-    const specialCount = level === 2 ? 6 : 9;
+    const specialTypes = ["spike"];
+    const specialCount = level === 2 ? 6 : 8;
     while (specialIndexes.size < specialCount) {
       const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
       if (!specialIndexes.has(index)) {
@@ -33,7 +31,6 @@ function makeBricks(level = 1) {
       }
     }
   }
-
   const twoHitIndexes = new Set();
   while (twoHitIndexes.size < 8) {
     const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
