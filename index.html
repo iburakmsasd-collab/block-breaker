@@ -20,32 +20,51 @@
           <canvas id="menu-canvas" width="600" height="450" aria-hidden="true"></canvas>
           <button id="start-game" type="button">Start Game</button>
           <button id="open-shop" type="button">Shop</button>
+          <button id="open-settings" type="button">Settings</button>
         </div>
         <section id="shop-menu" class="shop-menu" aria-labelledby="shop-title" hidden>
           <h2 id="shop-title">Shop</h2>
-          <div class="shop-item">
-            <h3>Sniper Brick</h3>
-            <div class="shop-item-content">
-              <span class="sniper-brick-preview" aria-label="Sniper Brick preview">SNIPE</span>
-              <p>Collect it for 1 laser shot. Press X to break a column of blocks.</p>
-              <button id="buy-sniper" type="button">Buy · 500</button>
+          <div class="shop-list">
+            <div class="shop-item">
+              <h3>Sniper Brick</h3>
+              <div class="shop-item-content">
+                <span class="sniper-brick-preview" aria-label="Sniper Brick preview">SNIPE</span>
+                <p>Collect it for 1 sniper shot. Press X to break a column of blocks.</p>
+                <button id="buy-sniper" type="button">Buy · 500</button>
+              </div>
             </div>
-          </div>
-          <div class="shop-item">
-            <h3>Multiball Brick</h3>
-            <div class="shop-item-content">
-              <span class="multiball-brick-preview" aria-label="Multiball Brick preview">●</span>
-              <p>Shoots 2 extra balls from the paddle.</p>
-              <button id="buy-multiball" type="button">Buy · 200</button>
+            <div class="shop-item">
+              <h3>Multiball Brick</h3>
+              <div class="shop-item-content">
+                <span class="multiball-brick-preview" aria-label="Multiball Brick preview">●</span>
+                <p>Shoots 2 extra balls from the paddle.</p>
+                <button id="buy-multiball" type="button">Buy · 200</button>
+              </div>
             </div>
+            <div class="shop-item">
+              <h3>Explosive Brick</h3>
+              <div class="shop-item-content">
+                <span class="explosive-brick-preview" aria-label="Explosive Brick preview"></span>
+                <p>Explodes when broken, destroying 4-6 nearby bricks.</p>
+                <button id="buy-explosive" type="button">Buy for 600</button>
+              </div>
+            </div>
+            <p id="shop-status" class="shop-status" aria-live="polite"></p>
           </div>
-          <p id="shop-status" class="shop-status" aria-live="polite"></p>
-          <button id="close-shop" type="button">Back</button>
+          <button id="close-shop" class="menu-back-button" type="button">Back</button>
+        </section>
+        <section id="settings-menu" class="shop-menu" aria-labelledby="settings-title" hidden>
+          <h2 id="settings-title">Settings</h2>
+          <div class="shop-item settings-item">
+            <h3>Reset Credits</h3>
+            <button id="reset-credits" type="button">Reset</button>
+          </div>
+          <button id="close-settings" class="menu-back-button" type="button">Back</button>
         </section>
       </div>
       <h1 id="game-title" class="game-title">Block Breaker</h1>
     </section>
-    <p>Move with the arrow keys or A and D. Catch a Snipe pickup, then press X to fire a vertical beam through the bricks.</p>
+    <p>Move with the arrow keys or A and D. Press Space to launch the ball, then press Space again to fire collected Snipe ammo.</p>
   </main>
 
   <!-- The order matters: game.js goes first because the other files use its settings. -->

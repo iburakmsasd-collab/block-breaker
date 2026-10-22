@@ -92,7 +92,7 @@ canvas {
   align-items: stretch;
   gap: 8px;
   padding: 12px 14px;
-  overflow: auto;
+  overflow: hidden;
   border: 2px solid #fff;
   background: #000;
 }
@@ -107,7 +107,26 @@ canvas {
 }
 
 .shop-menu h2 {
+  flex: 0 0 auto;
   font-size: 22px;
+}
+
+.shop-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.shop-list > .shop-item {
+  flex: 0 0 auto;
+}
+
+.shop-menu > .menu-back-button {
+  flex: 0 0 auto;
 }
 
 .shop-item {
@@ -120,11 +139,24 @@ canvas {
   text-align: left;
 }
 
+.settings-item {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+}
+
+.settings-item h3 {
+  text-align: left;
+}
+
 .shop-item-content {
   display: flex;
   align-items: center;
   padding-left: 78px;
-  padding-right: 96px;
+  padding-right: 160px;
   min-height: 32px;
 }
 
@@ -165,6 +197,44 @@ canvas {
   font-weight: bold;
 }
 
+.explosive-brick-preview {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  display: inline-flex;
+  width: 68px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  background: #ffad33;
+  color: #a82f0d;
+}
+
+.explosive-brick-preview::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  background: #a82f0d;
+  clip-path: polygon(50% 0%, 61% 25%, 85% 8%, 78% 36%, 100% 50%, 76% 60%, 91% 87%, 63% 77%, 50% 100%, 39% 76%, 14% 91%, 24% 64%, 0% 50%, 25% 39%, 9% 13%, 38% 23%);
+  content: "";
+}
+
+.explosive-brick-preview::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #fff0a0;
+  content: "";
+}
+
 .shop-item h3 {
   margin: 0;
   font-size: 16px;
@@ -183,7 +253,7 @@ canvas {
   margin: 0;
 }
 
-.shop-menu > #close-shop {
+.shop-menu > .menu-back-button {
   align-self: center;
   width: 190px;
   min-height: 42px;
@@ -191,7 +261,7 @@ canvas {
 
 .game-title {
   position: absolute;
-  top: 34%;
+  top: 20%;
   left: 50%;
   z-index: 2;
   margin: 0;
@@ -234,7 +304,8 @@ canvas {
 }
 
 .start-menu #start-game,
-.start-menu #open-shop {
+.start-menu #open-shop,
+.start-menu #open-settings {
   width: 190px;
   min-height: 42px;
 }
@@ -245,14 +316,42 @@ canvas {
   right: 8px;
   flex-shrink: 0;
   padding: 8px 10px;
-  font-size: 13px;
   white-space: nowrap;
   transform: translateY(-50%);
+}
+
+.shop-item-content > button {
+  min-width: 144px;
+  font-size: 11px;
+}
+
+.shop-item button.insufficient-funds {
+  animation: insufficient-funds-shake 420ms ease-in-out;
+  background: #ef4545;
+  border-color: #ef4545;
+  color: #fff;
+}
+
+@keyframes insufficient-funds-shake {
+  0%, 100% { transform: translateY(-50%) translateX(0); }
+  20%, 60% { transform: translateY(-50%) translateX(-5px); }
+  40%, 80% { transform: translateY(-50%) translateX(5px); }
 }
 
 .shop-menu .shop-item button:hover,
 .shop-menu .shop-item button:focus-visible {
   transform: translateY(calc(-50% - 3px)) scale(1.04);
+}
+
+.settings-item button {
+  position: static;
+  min-width: 88px;
+  transform: none;
+}
+
+.shop-menu .settings-item button:hover,
+.shop-menu .settings-item button:focus-visible {
+  transform: translateY(-3px) scale(1.04);
 }
 
 .shop-item button:disabled {

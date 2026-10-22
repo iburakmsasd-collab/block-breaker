@@ -110,7 +110,7 @@ function damageBrick(brick) {
   }
 }
 
-function destroyBrick(brick, particlesAlreadyEmitted = false) {
+function destroyBrick(brick, particlesAlreadyEmitted = false, suppressExplosion = false) {
   const brickIndex = bricks.indexOf(brick);
   if (brickIndex === -1) {
     return;
@@ -124,7 +124,7 @@ function destroyBrick(brick, particlesAlreadyEmitted = false) {
     }
   }
   bricks.splice(brickIndex, 1);
-  onBrickDestroyed(brick);
+  onBrickDestroyed(brick, suppressExplosion);
 }
 
 // The ball bounces off bricks and removes each one after enough hits.

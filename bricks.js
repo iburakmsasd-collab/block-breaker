@@ -13,7 +13,8 @@ const BRICK_CHECKER_ROWS = 6;
 const POWERUP_STYLES = {
   multiball: { color: "#35d06f", darkerColor: "#176b3a" },
   spike: { color: "#ef4545", darkerColor: "#842626" },
-  snipe: { color: "#46b5dc", darkerColor: "#245d78" }
+  snipe: { color: "#46b5dc", darkerColor: "#245d78" },
+  explosive: { color: "#ffad33", darkerColor: "#a82f0d" }
 };
 
 // Builds the list of bricks. Each brick is an object with an
@@ -113,6 +114,28 @@ function drawBricks() {
         ctx.lineTo(centerX - 7, centerY + 8);
         ctx.closePath();
         ctx.fill();
+      } else if (brick.special === "explosive") {
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.beginPath();
+        for (let point = 0; point < 12; point++) {
+          const angle = point / 12 * Math.PI * 2 - Math.PI / 2;
+          const radius = point % 2 === 0 ? 11 : 5;
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+          if (point === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#fff0a0";
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       } else {
         ctx.font = "bold 14px sans-serif";
         ctx.textAlign = "center";
