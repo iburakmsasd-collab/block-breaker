@@ -142,11 +142,7 @@ const keys = {};
 document.addEventListener("keydown", function (event) {
   if ((shopOpen || settingsOpen) && event.key === "Escape") {
     event.preventDefault();
-    if (shopOpen) {
-      closeShop();
-    } else {
-      closeSettings();
-    }
+    exitMenu();
     return;
   }
   if (shopOpen || settingsOpen) {
@@ -171,14 +167,13 @@ document.addEventListener("keydown", function (event) {
   }
   if (event.code === "Enter" && levelComplete) {
     event.preventDefault();
-    levelComplete = false;
-    beginLevel(level + 1);
+    nextRound();
   }
   if (event.code === "Space") {
     event.preventDefault();
     if (!event.repeat) {
       if (ballLaunched) {
-        fireSnipe();
+        fireSniper();
       } else {
         launchBall();
       }
@@ -353,6 +348,11 @@ function beginLevel(nextLevel) {
   resetBall();
 }
 
+function nextRound() {
+  levelComplete = false;
+  beginLevel(level + 1);
+}
+
 function updateLevelTransition() {
   const dropFrames = 45;
   const riseFrames = 24;
@@ -453,7 +453,7 @@ function updateFallingPowerups() {
   }
 }
 
-function fireSnipe() {
+function fireSniper() {
   if (snipeAmmo <= 0 || deathScreen || levelTransition || levelComplete) {
     return;
   }
@@ -1087,6 +1087,14 @@ function closeSettings() {
     canvas.focus();
   } else {
     openSettingsButton.focus();
+  }
+}
+
+function exitMenu() {
+  if (shopOpen) {
+    closeShop();
+  } else if (settingsOpen) {
+    closeSettings();
   }
 }
 
