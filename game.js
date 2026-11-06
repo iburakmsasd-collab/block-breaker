@@ -19,6 +19,7 @@ const closeShopButton = document.getElementById("close-shop");
 const closeSettingsButton = document.getElementById("close-settings");
 const buySniperButton = document.getElementById("buy-sniper");
 const buyMultiballButton = document.getElementById("buy-multiball");
+const buyPentaballButton = document.getElementById("buy-pentaball");
 const buyExplosiveButton = document.getElementById("buy-explosive");
 const resetCreditsButton = document.getElementById("reset-credits");
 const shopMenu = document.getElementById("shop-menu");
@@ -34,6 +35,7 @@ const WIDTH = canvas.width;   // 600
 const HEIGHT = canvas.height; // 450
 const SNIPER_UPGRADE_COST = 500;
 const MULTIBALL_UPGRADE_COST = 200;
+const PENTABALL_UPGRADE_COST = 10000;
 const EXPLOSIVE_UPGRADE_COST = 600;
 const SHOP_STORAGE_KEY = "block-breaker-shop";
 
@@ -50,6 +52,8 @@ let sniperUpgradeOwned = savedShopProgress.sniperUpgradeOwned;
 let sniperUpgradeEquipped = savedShopProgress.sniperUpgradeEquipped;
 let multiballUpgradeOwned = savedShopProgress.multiballUpgradeOwned;
 let multiballUpgradeEquipped = savedShopProgress.multiballUpgradeEquipped;
+let pentaballUpgradeOwned = savedShopProgress.pentaballUpgradeOwned;
+let pentaballUpgradeEquipped = savedShopProgress.pentaballUpgradeEquipped;
 let explosiveUpgradeOwned = savedShopProgress.explosiveUpgradeOwned;
 let explosiveUpgradeEquipped = savedShopProgress.explosiveUpgradeEquipped;
 updateShopDisplay();
@@ -198,6 +202,7 @@ closeShopButton.addEventListener("click", closeShop);
 closeSettingsButton.addEventListener("click", closeSettings);
 buySniperButton.addEventListener("click", purchaseSniperUpgrade);
 buyMultiballButton.addEventListener("click", purchaseMultiballUpgrade);
+buyPentaballButton.addEventListener("click", purchasePentaballUpgrade);
 buyExplosiveButton.addEventListener("click", purchaseExplosiveUpgrade);
 resetCreditsButton.addEventListener("click", resetCredits);
 
@@ -269,6 +274,9 @@ function update() {
   updateFallingPowerups();
   updateFallingSpikes();
   updateSnipeBeams();
+  for (const brick of bricks) {
+    brick.move(brick);
+  }
   movePaddle();
   for (const ball of balls) {
     moveBall(ball);
@@ -298,9 +306,6 @@ function update() {
   }
 
   if (!deathScreen && bricks.length === 0) {
-    if (level === 2) {
-      GameState.lives += 1;
-    }
     creditsEarnedThisLevel = awardRoundCredits();
     resetPaddleSlow();
     levelComplete = true;
@@ -443,6 +448,23 @@ function updateFallingPowerups() {
             vy: -Math.sqrt(speed * speed - horizontalSpeed * horizontalSpeed)
           });
         }
+      } else if (powerup.type === "pentaball") {
+        const sourceBall = balls[0];
+        const speed = Math.hypot(sourceBall.vx, sourceBall.vy) || BALL_SPEED;
+        const ballCount = 10;
+        for (let ballIndex = 0; ballIndex < ballCount; ballIndex++) {
+          const angle = Math.PI / 9 + ballIndex * (7 * Math.PI / 9) / (ballCount - 1);
+          balls.push({
+            x: paddle.x + (paddle.width - sourceBall.width) * ballIndex / (ballCount - 1),
+            y: paddle.y - sourceBall.height,
+            width: sourceBall.width,
+            height: sourceBall.height,
+            vx: speed * Math.cos(angle),
+            vy: -speed * Math.sin(angle)
+          });
+        }
+      } else if (powerup.type === "heart") {
+        GameState.lives += 1;
       } else if (powerup.type === "snipe") {
         snipeAmmo += 1;
       }
@@ -505,7 +527,7 @@ function updateFallingSpikes() {
 
 function onBrickDestroyed(brick, suppressExplosion = false) {
   GameState.blocksBroken += 1;
-  if (brick.special === "multiball") {
+  if (brick.special === "multiball" || brick.special === "pentaball" || brick.special === "heart") {
     fallingPowerups.push({
       type: brick.special,
       x: brick.x + brick.width / 2 - 10,
@@ -766,6 +788,22 @@ function drawFallingPowerups() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("+", centerX, centerY);
+    } else if (powerup.type === "pentaball") {
+      ctx.fillStyle = "#25c6b7";
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      ctx.fillStyle = "#11665f";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("10", centerX, centerY);
+    } else if (powerup.type === "heart") {
+      ctx.fillStyle = "#f05a70";
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      ctx.fillStyle = "white";
+      ctx.font = "bold 18px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("+", centerX, centerY);
     } else {
       ctx.fillStyle = "#46b5dc";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -847,9 +885,6 @@ function drawLevelComplete() {
   ctx.fillText(`Level ${level} complete!`, WIDTH / 2, HEIGHT / 2 - 58);
   ctx.font = "18px sans-serif";
   ctx.fillText(`Credits earned: +${creditsEarnedThisLevel}`, WIDTH / 2, HEIGHT / 2 - 18);
-  if (level === 2) {
-    ctx.fillText("Extra heart earned", WIDTH / 2, HEIGHT / 2 + 12);
-  }
   ctx.font = "16px sans-serif";
   ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 48);
 }
@@ -907,6 +942,7 @@ function loadShopProgress() {
     const saved = JSON.parse(window.localStorage.getItem(SHOP_STORAGE_KEY) || "{}");
     const sniperOwned = saved.sniperUpgradeOwned === true;
     const multiballOwned = saved.multiballUpgradeOwned === true;
+    const pentaballOwned = saved.pentaballUpgradeOwned === true;
     return {
       credits: Number.isSafeInteger(saved.credits) && saved.credits >= 0 ? saved.credits : 0,
       sniperUpgradeOwned: sniperOwned,
@@ -917,6 +953,8 @@ function loadShopProgress() {
       ),
       multiballUpgradeOwned: multiballOwned,
       multiballUpgradeEquipped: multiballOwned && saved.multiballUpgradeEquipped === true,
+      pentaballUpgradeOwned: pentaballOwned,
+      pentaballUpgradeEquipped: pentaballOwned && saved.pentaballUpgradeEquipped === true,
       explosiveUpgradeOwned: saved.explosiveUpgradeOwned === true,
       explosiveUpgradeEquipped: saved.explosiveUpgradeOwned === true && saved.explosiveUpgradeEquipped === true
     };
@@ -930,6 +968,8 @@ function loadShopProgress() {
       sniperUpgradeEquipped: false,
       multiballUpgradeOwned: false,
       multiballUpgradeEquipped: false,
+      pentaballUpgradeOwned: false,
+      pentaballUpgradeEquipped: false,
       explosiveUpgradeOwned: false,
       explosiveUpgradeEquipped: false
     };
@@ -944,6 +984,8 @@ function persistShopProgress() {
       sniperUpgradeEquipped,
       multiballUpgradeOwned,
       multiballUpgradeEquipped,
+      pentaballUpgradeOwned,
+      pentaballUpgradeEquipped,
       explosiveUpgradeOwned,
       explosiveUpgradeEquipped
     }));
@@ -970,6 +1012,11 @@ function updateShopDisplay() {
     ? (multiballUpgradeEquipped ? "Equipped" : "Equip")
     : `Buy for ${MULTIBALL_UPGRADE_COST}`;
   buyMultiballButton.dataset.defaultLabel = buyMultiballButton.textContent;
+  buyPentaballButton.setAttribute("aria-pressed", String(pentaballUpgradeOwned && pentaballUpgradeEquipped));
+  buyPentaballButton.textContent = pentaballUpgradeOwned
+    ? (pentaballUpgradeEquipped ? "Equipped" : "Equip")
+    : `Buy for ${PENTABALL_UPGRADE_COST}`;
+  buyPentaballButton.dataset.defaultLabel = buyPentaballButton.textContent;
   buyExplosiveButton.setAttribute("aria-pressed", String(explosiveUpgradeOwned && explosiveUpgradeEquipped));
   buyExplosiveButton.textContent = explosiveUpgradeOwned
     ? (explosiveUpgradeEquipped ? "Equipped" : "Equip")
@@ -986,6 +1033,9 @@ function makeBricksForRound(roundLevel) {
   if (multiballUpgradeEquipped) {
     const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
     addEquippedBricks(roundBricks, "multiball", multiballBrickCount);
+  }
+  if (pentaballUpgradeEquipped) {
+    addEquippedBricks(roundBricks, "pentaball");
   }
   if (explosiveUpgradeEquipped) {
     const explosiveBrickCount = Math.floor(Math.random() * 2) + 1;
@@ -1035,8 +1085,7 @@ function removeEquippedBrick(special) {
 }
 
 function awardRoundCredits() {
-  const creditsByLives = [0, 30, 60, 100];
-  const earned = creditsByLives[Math.min(GameState.lives, 3)] + Math.max(0, GameState.lives - 3) * 30;
+  const earned = 100 + Math.max(0, GameState.lives - 3) * 30;
   GameState.credits += earned;
   updateShopDisplay();
   persistShopProgress();
@@ -1126,6 +1175,22 @@ function purchaseMultiballUpgrade() {
     },
     onEquip: (equipped) => {
       multiballUpgradeEquipped = equipped;
+    }
+  });
+}
+
+function purchasePentaballUpgrade() {
+  purchaseOrToggleShopItem({
+    owned: pentaballUpgradeOwned,
+    equipped: pentaballUpgradeEquipped,
+    cost: PENTABALL_UPGRADE_COST,
+    special: "pentaball",
+    button: buyPentaballButton,
+    onPurchase: () => {
+      pentaballUpgradeOwned = true;
+    },
+    onEquip: (equipped) => {
+      pentaballUpgradeEquipped = equipped;
     }
   });
 }

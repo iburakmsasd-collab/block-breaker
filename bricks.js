@@ -12,10 +12,21 @@ const BRICK_CHECKER_COLUMNS = 12;
 const BRICK_CHECKER_ROWS = 6;
 const POWERUP_STYLES = {
   multiball: { color: "#35d06f", darkerColor: "#176b3a" },
+  pentaball: { color: "#25c6b7", darkerColor: "#11665f" },
+  heart: { color: "#f05a70", darkerColor: "#8d1c30" },
   spike: { color: "#ef4545", darkerColor: "#842626" },
   snipe: { color: "#46b5dc", darkerColor: "#245d78" },
   explosive: { color: "#ffad33", darkerColor: "#a82f0d" }
 };
+
+function stayStill(brick) {}
+
+function slide(brick) {
+  brick.x += brick.speed;
+  if (Math.abs(brick.x - brick.startX) > 30) {
+    brick.speed *= -1;
+  }
+}
 
 // Builds the list of bricks. Each brick is an object with an
 // x, y, width, and height.
@@ -24,13 +35,18 @@ function makeBricks(level = 1) {
   const specialIndexes = new Map();
   if (level >= 2) {
     const specialTypes = ["spike"];
-    const specialCount = level === 2 ? 6 : 8;
+    const specialCount = BRICK_COLUMNS;
     while (specialIndexes.size < specialCount) {
       const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
       if (!specialIndexes.has(index)) {
         specialIndexes.set(index, specialTypes[specialIndexes.size % specialTypes.length]);
       }
     }
+    let heartIndex;
+    do {
+      heartIndex = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
+    } while (specialIndexes.has(heartIndex));
+    specialIndexes.set(heartIndex, "heart");
   }
   const twoHitIndexes = new Set();
   while (twoHitIndexes.size < 8) {
@@ -52,8 +68,12 @@ function makeBricks(level = 1) {
       const powerupStyle = special ? POWERUP_STYLES[special] : null;
       const needsTwoHits = !special && twoHitIndexes.has(index);
       const y = BRICKS_TOP + row * (BRICK_HEIGHT + BRICK_GAP);
+      const x = left + col * (BRICK_WIDTH + BRICK_GAP);
       list.push({
-        x: left + col * (BRICK_WIDTH + BRICK_GAP),
+        x,
+        startX: x,
+        move: row === 0 ? slide : stayStill,
+        speed: row === 0 ? 2 : 0,
         y,
         targetY: y,
         width: BRICK_WIDTH,
@@ -107,6 +127,16 @@ function drawBricks() {
         ctx.beginPath();
         ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
         ctx.fill();
+      } else if (brick.special === "pentaball") {
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("PENTA", centerX, centerY);
+      } else if (brick.special === "heart") {
+        ctx.font = "bold 20px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("+", centerX, centerY);
       } else if (brick.special === "spike") {
         ctx.beginPath();
         ctx.moveTo(centerX, centerY - 9);
