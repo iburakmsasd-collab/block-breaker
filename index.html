@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Block Breaker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,7 +14,7 @@
     <form id="level-code-form" class="level-code">
       <output id="credit-balance" class="credit-balance">Credits: 0</output>
       <label for="level-code">Code</label>
-      <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off" disabled>
+      <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off">
     </form>
     <section class="game-stage" aria-label="Block Breaker">
       <div class="game-board">
@@ -23,41 +26,14 @@
           <button id="open-settings" type="button">Settings</button>
         </div>
         <section id="shop-menu" class="shop-menu" aria-labelledby="shop-title" hidden>
-          <h2 id="shop-title">Shop</h2>
-          <div class="shop-list">
-            <div class="shop-item">
-              <h3>Sniper Brick</h3>
-              <div class="shop-item-content">
-                <span class="sniper-brick-preview" aria-label="Sniper Brick preview">SNIPE</span>
-                <p>Collect it for 1 sniper shot. Press X to break a column of blocks.</p>
-                <button id="buy-sniper" type="button">Buy · 500</button>
-              </div>
-            </div>
-            <div class="shop-item">
-              <h3>Multiball Brick</h3>
-              <div class="shop-item-content">
-                <span class="multiball-brick-preview" aria-label="Multiball Brick preview">●</span>
-                <p>Shoots 2 extra balls from the paddle.</p>
-                <button id="buy-multiball" type="button">Buy · 200</button>
-              </div>
-            </div>
-            <div class="shop-item">
-              <h3>Pentaball Brick</h3>
-              <div class="shop-item-content">
-                <span class="pentaball-brick-preview" aria-label="Pentaball Brick preview">PENTA</span>
-                <p>Launches 10 extra balls from the paddle.</p>
-                <button id="buy-pentaball" type="button">Buy · 10000</button>
-              </div>
-            </div>
-            <div class="shop-item">
-              <h3>Explosive Brick</h3>
-              <div class="shop-item-content">
-                <span class="explosive-brick-preview" aria-label="Explosive Brick preview"></span>
-                <p>Explodes when broken, destroying 4-6 nearby bricks.</p>
-                <button id="buy-explosive" type="button">Buy for 600</button>
-              </div>
-            </div>
-            <p id="shop-status" class="shop-status" aria-live="polite"></p>
+          <div class="shop-header">
+            <h2 id="shop-title">Loot Chest</h2>
+            <button id="open-chest" class="chest-button" type="button">Open chest · 250</button>
+          </div>
+          <div class="contains-row">Contains:</div>
+          <div id="shop-list" class="shop-list" aria-live="polite"></div>
+          <div id="chest-reveal" class="chest-reveal" hidden>
+            <canvas id="chest-reveal-canvas" width="420" height="220" aria-label="Chest reveal canvas"></canvas>
           </div>
           <button id="close-shop" class="menu-back-button" type="button">Back</button>
         </section>
@@ -72,7 +48,7 @@
       </div>
       <h1 id="game-title" class="game-title">Block Breaker</h1>
     </section>
-    <p>Move with the arrow keys or A and D. Press Space to launch the ball, then press Space again to fire collected Snipe ammo.</p>
+    <p>Move with the arrow keys or A and D. Press Shift for a brief paddle speed boost (7-second cooldown). Press Space to launch the ball, then press Space again to fire collected Snipe ammo.</p>
   </main>
 
   <!-- The order matters: game.js goes first because the other files use its settings. -->

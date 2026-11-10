@@ -17,15 +17,13 @@ const openShopButton = document.getElementById("open-shop");
 const openSettingsButton = document.getElementById("open-settings");
 const closeShopButton = document.getElementById("close-shop");
 const closeSettingsButton = document.getElementById("close-settings");
-const buySniperButton = document.getElementById("buy-sniper");
-const buyMultiballButton = document.getElementById("buy-multiball");
-const buyPentaballButton = document.getElementById("buy-pentaball");
-const buyExplosiveButton = document.getElementById("buy-explosive");
 const resetCreditsButton = document.getElementById("reset-credits");
+const openChestButton = document.getElementById("open-chest");
 const shopMenu = document.getElementById("shop-menu");
 const settingsMenu = document.getElementById("settings-menu");
-const shopStatus = document.getElementById("shop-status");
-const purchaseFeedbackTimers = new WeakMap();
+const shopList = document.getElementById("shop-list");
+const chestReveal = document.getElementById("chest-reveal");
+const chestRevealCanvas = document.getElementById("chest-reveal-canvas");
 const creditBalance = document.getElementById("credit-balance");
 const gameTitle = document.getElementById("game-title");
 const menuCanvas = document.getElementById("menu-canvas");
@@ -33,11 +31,80 @@ const menuCtx = menuCanvas.getContext("2d");
 
 const WIDTH = canvas.width;   // 600
 const HEIGHT = canvas.height; // 450
-const SNIPER_UPGRADE_COST = 500;
-const MULTIBALL_UPGRADE_COST = 200;
-const PENTABALL_UPGRADE_COST = 10000;
-const EXPLOSIVE_UPGRADE_COST = 600;
+const PADDLE_TRAIL_LENGTH = 10;
+const PADDLE_TRAIL_LIFE = 12;
+const CHEST_COST = 250;
 const SHOP_STORAGE_KEY = "block-breaker-shop";
+const ITEM_ORDER = ["heart", "multiball", "snipe", "explosive", "pentaball"];
+const ITEM_DEFS = Object.freeze({
+  pentaball: {
+    name: "Pentaball Brick",
+    previewClass: "pentaball-brick-preview",
+    previewText: "PENTA",
+    description: "Launches 10 extra balls from the paddle.",
+    rarity: 1,
+    dropChance: 1,
+    sellPrice: 1200
+  },
+  explosive: {
+    name: "Explosive Brick",
+    previewClass: "explosive-brick-preview",
+    previewText: "",
+    description: "Explodes when broken, destroying 4-6 nearby bricks.",
+    rarity: 2,
+    dropChance: 5,
+    sellPrice: 600
+  },
+  snipe: {
+    name: "Sniper Brick",
+    previewClass: "sniper-brick-preview",
+    previewText: "SNIPE",
+    description: "Collect it for 1 sniper shot. Press X to break a column of blocks.",
+    rarity: 3,
+    dropChance: 19,
+    sellPrice: 500
+  },
+  multiball: {
+    name: "Multiball Brick",
+    previewClass: "multiball-brick-preview",
+    previewText: "●",
+    description: "Shoots 2 extra balls from the paddle.",
+    rarity: 4,
+    dropChance: 30,
+    sellPrice: 200
+  },
+  heart: {
+    name: "Heal Brick",
+    previewClass: "heart-brick-preview",
+    previewText: "",
+    description: "Adds 1 extra life when collected.",
+    rarity: 5,
+    dropChance: 45,
+    sellPrice: 100
+  }
+});
+const CHEST_DROP_WEIGHTS = Object.freeze({
+  pentaball: 1,
+  explosive: 5,
+  snipe: 19,
+  multiball: 30,
+  heart: 45
+});
+
+function rollChestItem() {
+  const totalWeight = Object.values(CHEST_DROP_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
+  const roll = Math.random() * totalWeight;
+  let runningTotal = 0;
+
+  for (const itemKey of ITEM_ORDER) {
+    runningTotal += CHEST_DROP_WEIGHTS[itemKey];
+    if (roll < runningTotal) {
+      return itemKey;
+    }
+  }
+
+  return ITEM_ORDER[ITEM_ORDER.length - 1];
+}
 
 const GameState = {
   lives: 3,
@@ -45,17 +112,15 @@ const GameState = {
   credits: 0
 };
 
+function createDefaultItemInventory() {
+  return Object.fromEntries(ITEM_ORDER.map((itemKey) => [itemKey, { count: 0, equipped: false }]));
+}
+
+let itemInventory = createDefaultItemInventory();
 let shopStorageError = false;
 const savedShopProgress = loadShopProgress();
 GameState.credits = savedShopProgress.credits;
-let sniperUpgradeOwned = savedShopProgress.sniperUpgradeOwned;
-let sniperUpgradeEquipped = savedShopProgress.sniperUpgradeEquipped;
-let multiballUpgradeOwned = savedShopProgress.multiballUpgradeOwned;
-let multiballUpgradeEquipped = savedShopProgress.multiballUpgradeEquipped;
-let pentaballUpgradeOwned = savedShopProgress.pentaballUpgradeOwned;
-let pentaballUpgradeEquipped = savedShopProgress.pentaballUpgradeEquipped;
-let explosiveUpgradeOwned = savedShopProgress.explosiveUpgradeOwned;
-let explosiveUpgradeEquipped = savedShopProgress.explosiveUpgradeEquipped;
+itemInventory = savedShopProgress.itemInventory;
 updateShopDisplay();
 
 
@@ -69,6 +134,11 @@ const BALL_SPEED = 6;
 let BALL_GRAVITY = 0.01;
 const PADDLE_SPEED = 8;
 const PADDLE_SLOW_DURATION = 15000;
+const PADDLE_BOOST_MULTIPLIER = 2;
+const PADDLE_BOOST_DURATION = 100;
+const PADDLE_BOOST_COOLDOWN = 7000;
+const BALL_SQUISH_FRAMES = 18;
+const BALL_TRAIL_LENGTH = 10;
 
 let balls = [];
 let ballLaunched = false;
@@ -81,9 +151,11 @@ function resetBall() {
     width: 15,
     height: 15,
     vx: 0,
-    vy: 0
+    vy: 0,
+    squish: 0
   }];
   ballLaunched = false;
+  updateBallTrail(balls[0]);
 }
 
 function launchBall() {
@@ -109,6 +181,7 @@ const paddle = {
   height: 8,
   speed: PADDLE_SPEED
 };
+let paddleTrail = [];
 
 
 // ------------------------------------------------------------
@@ -124,6 +197,12 @@ let fallingSpikes = [];
 let snipeBeams = [];
 let snipeAmmo = 0;
 let paddleHitTexts = [];
+let comboTexts = [];
+let comboRewards = [];
+let brickCombo = 0;
+let lastComboDisplayValue = 0;
+let shakeFrames = 0;
+let shakeStrength = 0;
 let gameStarted = false;
 let level = 1;
 let creditsEarnedThisLevel = 0;
@@ -132,6 +211,8 @@ let levelTransitionFrame = 0;
 let levelComplete = false;
 let paddleSlowed = false;
 let paddleSlowUntil = 0;
+let paddleBoostUntil = 0;
+let paddleBoostCooldownUntil = 0;
 let shopOpen = false;
 let settingsOpen = false;
 let equippedBrickOriginals = new Map();
@@ -162,6 +243,9 @@ document.addEventListener("keydown", function (event) {
     return;
   }
   keys[event.key.toLowerCase()] = true;
+  if ((event.code === "ShiftLeft" || event.code === "ShiftRight") && !event.repeat) {
+    activatePaddleBoost();
+  }
   if (event.code === "Enter" && deathScreen) {
     event.preventDefault();
     if (GameState.lives === 0) {
@@ -200,10 +284,7 @@ openShopButton.addEventListener("click", openShop);
 openSettingsButton.addEventListener("click", openSettings);
 closeShopButton.addEventListener("click", closeShop);
 closeSettingsButton.addEventListener("click", closeSettings);
-buySniperButton.addEventListener("click", purchaseSniperUpgrade);
-buyMultiballButton.addEventListener("click", purchaseMultiballUpgrade);
-buyPentaballButton.addEventListener("click", purchasePentaballUpgrade);
-buyExplosiveButton.addEventListener("click", purchaseExplosiveUpgrade);
+openChestButton.addEventListener("click", openChest);
 resetCreditsButton.addEventListener("click", resetCredits);
 
 startMenu.addEventListener("animationend", function (event) {
@@ -211,7 +292,6 @@ startMenu.addEventListener("animationend", function (event) {
     return;
   }
   gameStarted = true;
-  levelCodeInput.disabled = false;
   startMenu.remove();
   gameBoard.classList.remove("menu-dismissing");
 });
@@ -229,7 +309,7 @@ levelCodeInput.addEventListener("keydown", function (event) {
 
 levelCodeForm.addEventListener("submit", function (event) {
   event.preventDefault();
-  if (gameStarted && levelCodeInput.value === "47") {
+  if (levelCodeInput.value === "47") {
     const amountText = window.prompt("Enter credit amount");
     if (amountText !== null && /^\d+$/.test(amountText.trim())) {
       const amount = Number(amountText);
@@ -239,7 +319,7 @@ levelCodeForm.addEventListener("submit", function (event) {
         persistShopProgress();
       }
     }
-  } else if (gameStarted && levelCodeInput.value === "2442" && !deathScreen && !levelTransition && !levelComplete) {
+  } else if (levelCodeInput.value === "2442" && !deathScreen && !levelTransition && !levelComplete) {
     levelComplete = false;
     beginLevel(level + 1);
   }
@@ -251,6 +331,11 @@ levelCodeForm.addEventListener("submit", function (event) {
 // UPDATE: runs 60 times every second. Move things, then check
 // what they touched.
 // ------------------------------------------------------------
+function triggerShake(strength) {
+  shakeStrength = Math.max(shakeStrength, strength);
+  shakeFrames = 16;
+}
+
 function update() {
   if (shopOpen || settingsOpen) {
     return;
@@ -260,10 +345,24 @@ function update() {
   }
   updateFallingHearts();
   updateParticles();
+  updateBrickEffects();
   updateExplosions();
   updatePaddleHitTexts();
+  updateComboTexts();
+  updateComboRewards();
+  updatePaddleTrail();
+  if (shakeFrames > 0) {
+    shakeFrames -= 1;
+    if (shakeFrames === 0) {
+      shakeStrength = 0;
+    }
+  }
 
-  if (!gameStarted || deathScreen || levelComplete) {
+  if (!gameStarted) {
+    return;
+  }
+  if (deathScreen || levelComplete) {
+    updateBackgroundHazards();
     return;
   }
   if (levelTransition) {
@@ -279,13 +378,21 @@ function update() {
   }
   movePaddle();
   for (const ball of balls) {
+    ball.squish = Math.max(0, ball.squish - 1);
     moveBall(ball);
     bounceOffWalls(ball);   // collisions.js
     bounceOffPaddle(ball);  // collisions.js
     bounceOffBricks(ball);  // collisions.js
+    updateBallTrail(ball);
   }
 
   // Losing the ball costs a life and pauses until the player continues.
+  if (balls.some((ball) => ball.y > HEIGHT)) {
+    brickCombo = 0;
+    lastComboDisplayValue = 0;
+    shakeFrames = 0;
+    shakeStrength = 0;
+  }
   balls = balls.filter((ball) => ball.y <= HEIGHT);
   if (balls.length === 0) {
     const lostHeartIndex = GameState.lives - 1;
@@ -313,6 +420,60 @@ function update() {
   }
 }
 
+function updateBackgroundHazards() {
+  for (let index = fallingPowerups.length - 1; index >= 0; index--) {
+    const powerup = fallingPowerups[index];
+    powerup.y += powerup.vy;
+    if (powerup.y > HEIGHT) {
+      fallingPowerups.splice(index, 1);
+    }
+  }
+  for (let index = fallingSpikes.length - 1; index >= 0; index--) {
+    const spike = fallingSpikes[index];
+    spike.y += spike.vy;
+    if (spike.y > HEIGHT) {
+      fallingSpikes.splice(index, 1);
+    }
+  }
+  updateSnipeBeams();
+}
+
+function updateBackgroundMotion() {
+  for (const ball of balls) {
+    if (ball.vx === 0 && ball.vy === 0) {
+      ball.vx = (Math.random() < 0.5 ? -1 : 1) * BALL_SPEED * 0.55;
+      ball.vy = -BALL_SPEED * 0.8;
+    }
+
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball.vy += BALL_GRAVITY;
+    ball.squish = Math.max(0, ball.squish - 1);
+    bounceOffWalls(ball);
+    bounceOffBricks(ball, false);
+    if (ball.y + ball.height > HEIGHT) {
+      ball.y = HEIGHT - ball.height;
+      ball.vy = -Math.abs(ball.vy);
+    }
+    updateBallTrail(ball, true);
+  }
+}
+
+function activatePaddleBoost() {
+  const now = performance.now();
+  if (
+    !gameStarted ||
+    deathScreen ||
+    levelTransition ||
+    levelComplete ||
+    now < paddleBoostCooldownUntil
+  ) {
+    return;
+  }
+  paddleBoostUntil = now + PADDLE_BOOST_DURATION;
+  paddleBoostCooldownUntil = now + PADDLE_BOOST_COOLDOWN;
+}
+
 function resetGame() {
   level = 1;
   bricks = makeBricksForRound(level);
@@ -326,10 +487,18 @@ function resetGame() {
   creditsEarnedThisLevel = 0;
   snipeBeams = [];
   snipeAmmo = 0;
+  paddleTrail = [];
   paddleHitTexts = [];
+  comboTexts = [];
+  brickCombo = 0;
+  lastComboDisplayValue = 0;
+  shakeFrames = 0;
+  shakeStrength = 0;
   deathScreen = false;
   levelTransition = false;
   levelComplete = false;
+  paddleBoostUntil = 0;
+  paddleBoostCooldownUntil = 0;
   resetPaddleSlow();
   paddle.x = WIDTH / 2 - paddle.width / 2;
   resetBall();
@@ -337,13 +506,15 @@ function resetGame() {
 
 function beginLevel(nextLevel) {
   level = nextLevel;
+  brickCombo = 0;
+  lastComboDisplayValue = 0;
   snipeAmmo = 0;
   resetPaddleSlow();
   bricks = makeBricksForRound(level);
   explosions = [];
   for (const brick of bricks) {
     brick.targetY = brick.y;
-    brick.y -= HEIGHT;
+    brick.y = brick.targetY - BRICKS_TOP - BRICK_HEIGHT;
   }
   levelTransition = true;
   levelTransitionFrame = 0;
@@ -359,15 +530,16 @@ function nextRound() {
 }
 
 function updateLevelTransition() {
-  const dropFrames = 45;
-  const riseFrames = 24;
-  const overshoot = 36;
+  const dropFrames = 20;
+  const riseFrames = 8;
+  const overshoot = 12;
   levelTransitionFrame += 1;
 
   for (const brick of bricks) {
     if (levelTransitionFrame <= dropFrames) {
       const progress = levelTransitionFrame / dropFrames;
-      brick.y = brick.targetY - HEIGHT + (HEIGHT + overshoot) * progress;
+      const startY = brick.targetY - BRICKS_TOP - BRICK_HEIGHT;
+      brick.y = startY + (brick.targetY + overshoot - startY) * progress;
     } else {
       const progress = Math.min(1, (levelTransitionFrame - dropFrames) / riseFrames);
       brick.y = brick.targetY + overshoot * (1 - progress);
@@ -386,9 +558,9 @@ function updateLevelTransition() {
 function updateParticles() {
   for (let index = particles.length - 1; index >= 0; index--) {
     const particle = particles[index];
-    particle.x += particle.vx;
-    particle.y += particle.vy;
-    particle.vy += 0.15;
+    particle.x += particle.vx * 0.8;
+    particle.y += particle.vy * 0.8;
+    particle.vy += 0.08;
     particle.life -= 1;
 
     if (particle.life <= 0) {
@@ -429,6 +601,78 @@ function updatePaddleHitTexts() {
   }
 }
 
+function updateComboTexts() {
+  for (let index = comboTexts.length - 1; index >= 0; index--) {
+    const text = comboTexts[index];
+    if (text.rainbow && text.holdFrames > 0) {
+      text.holdFrames -= 1;
+      continue;
+    }
+    text.y -= text.rainbow ? 1.1 : 0.7;
+    text.life -= 1;
+    if (text.life <= 0) {
+      comboTexts.splice(index, 1);
+    }
+  }
+}
+
+function updateComboRewards() {
+  for (let index = comboRewards.length - 1; index >= 0; index--) {
+    const reward = comboRewards[index];
+    if (reward.arrived) {
+      reward.element.remove();
+      comboRewards.splice(index, 1);
+      const newBalance = GameState.credits + reward.amount;
+      if (Number.isSafeInteger(newBalance)) {
+        GameState.credits = newBalance;
+        updateShopDisplay();
+        persistShopProgress();
+      }
+      continue;
+    }
+
+    if (reward.waitFrames > 0) {
+      reward.waitFrames -= 1;
+      continue;
+    }
+
+    reward.travelFrames += 1;
+    const progress = Math.min(1, reward.travelFrames / 30);
+    const easedProgress = 1 - (1 - progress) ** 3;
+    const balanceBounds = creditBalance.getBoundingClientRect();
+    const targetX = balanceBounds.left + balanceBounds.width / 2;
+    const targetY = balanceBounds.top + balanceBounds.height / 2;
+    reward.element.style.left = `${reward.startX + (targetX - reward.startX) * easedProgress}px`;
+    reward.element.style.top = `${reward.startY + (targetY - reward.startY) * easedProgress}px`;
+    if (progress === 1) {
+      reward.element.remove();
+      reward.arrived = true;
+    }
+  }
+}
+
+function startComboReward(amount) {
+  const canvasBounds = canvas.getBoundingClientRect();
+  const startX = canvasBounds.left + canvasBounds.width / 2;
+  const startY = canvasBounds.top + canvasBounds.height / 2;
+  const element = document.createElement("span");
+  element.className = "combo-reward rainbow";
+  element.textContent = `+${amount.toLocaleString()}`;
+  element.setAttribute("aria-hidden", "true");
+  element.style.left = `${startX}px`;
+  element.style.top = `${startY}px`;
+  document.body.append(element);
+  comboRewards.push({
+    element,
+    amount,
+    startX,
+    startY,
+    waitFrames: 30,
+    travelFrames: 0,
+    arrived: false
+  });
+}
+
 function updateFallingPowerups() {
   for (let index = fallingPowerups.length - 1; index >= 0; index--) {
     const powerup = fallingPowerups[index];
@@ -437,15 +681,15 @@ function updateFallingPowerups() {
       if (powerup.type === "multiball") {
         const sourceBall = balls[0];
         const speed = Math.hypot(sourceBall.vx, sourceBall.vy) || BALL_SPEED;
-        for (const direction of [-1, 1]) {
-          const horizontalSpeed = speed * 0.55 * direction;
+        for (let ballIndex = 0; ballIndex < 2; ballIndex++) {
+          const velocity = randomUpwardVelocity(speed);
           balls.push({
-            x: paddle.x + paddle.width / 2 - sourceBall.width / 2 + direction * 8,
+            x: paddle.x + paddle.width / 2 - sourceBall.width / 2 + (Math.random() - 0.5) * 16,
             y: paddle.y - sourceBall.height,
             width: sourceBall.width,
             height: sourceBall.height,
-            vx: horizontalSpeed,
-            vy: -Math.sqrt(speed * speed - horizontalSpeed * horizontalSpeed)
+            vx: velocity.vx,
+            vy: velocity.vy
           });
         }
       } else if (powerup.type === "pentaball") {
@@ -453,14 +697,14 @@ function updateFallingPowerups() {
         const speed = Math.hypot(sourceBall.vx, sourceBall.vy) || BALL_SPEED;
         const ballCount = 10;
         for (let ballIndex = 0; ballIndex < ballCount; ballIndex++) {
-          const angle = Math.PI / 9 + ballIndex * (7 * Math.PI / 9) / (ballCount - 1);
+          const velocity = randomUpwardVelocity(speed);
           balls.push({
-            x: paddle.x + (paddle.width - sourceBall.width) * ballIndex / (ballCount - 1),
+            x: paddle.x + (paddle.width - sourceBall.width) * Math.random(),
             y: paddle.y - sourceBall.height,
             width: sourceBall.width,
             height: sourceBall.height,
-            vx: speed * Math.cos(angle),
-            vy: -speed * Math.sin(angle)
+            vx: velocity.vx,
+            vy: velocity.vy
           });
         }
       } else if (powerup.type === "heart") {
@@ -473,6 +717,14 @@ function updateFallingPowerups() {
       fallingPowerups.splice(index, 1);
     }
   }
+}
+
+function randomUpwardVelocity(speed) {
+  const angleFromUp = (Math.random() - 0.5) * (Math.PI * 2 / 3);
+  return {
+    vx: speed * Math.sin(angleFromUp),
+    vy: -speed * Math.cos(angleFromUp)
+  };
 }
 
 function fireSniper() {
@@ -488,6 +740,7 @@ function fireSniper() {
       destroyBrick(brick);
     }
   }
+  triggerShake(7.5);
 }
 
 function updateSnipeBeams() {
@@ -527,6 +780,29 @@ function updateFallingSpikes() {
 
 function onBrickDestroyed(brick, suppressExplosion = false) {
   GameState.blocksBroken += 1;
+  brickCombo += 1;
+  if (brickCombo > 1) {
+    triggerShake(Math.min(12, 1.5 + (brickCombo - 2) * 1.5));
+  }
+  if (brickCombo > 1) {
+    const reward = brickCombo === 10 ? 100 : brickCombo === 20 ? 200 : brickCombo === 30 ? 1000 : 0;
+    const alreadyShowingThisCombo = comboTexts.some((text) => text.value === brickCombo && text.life > 0);
+    if (!alreadyShowingThisCombo && brickCombo !== lastComboDisplayValue) {
+      comboTexts.push({
+        x: brickCombo >= 10 ? WIDTH / 2 : brick.x + brick.width / 2,
+        y: brickCombo >= 10 ? HEIGHT / 2 : brick.y + brick.height / 2,
+        value: brickCombo,
+        life: brickCombo >= 10 ? 30 : 60,
+        maxLife: brickCombo >= 10 ? 30 : 60,
+        holdFrames: brickCombo >= 10 ? 30 : 0,
+        rainbow: brickCombo >= 10
+      });
+      lastComboDisplayValue = brickCombo;
+    }
+    if (reward > 0) {
+      startComboReward(reward);
+    }
+  }
   if (brick.special === "multiball" || brick.special === "pentaball" || brick.special === "heart") {
     fallingPowerups.push({
       type: brick.special,
@@ -562,6 +838,7 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
 }
 
 function explodeBricksAround(sourceBrick) {
+  triggerShake(7.5);
   const targetCount = Math.random() < 0.1 ? 8 : Math.floor(Math.random() * 3) + 4;
   const centerX = sourceBrick.x + sourceBrick.width / 2;
   const centerY = sourceBrick.y + sourceBrick.height / 2;
@@ -610,16 +887,18 @@ function updateExplosions() {
   }
 }
 
-function movePaddleLeft() {
-  paddle.x = paddle.x - paddle.speed;
+function movePaddleLeft(speed = paddle.speed) {
+  paddle.x -= speed;
 }
 
 function movePaddle() {
+  const previousX = paddle.x;
+  const speed = paddle.speed * (performance.now() < paddleBoostUntil ? PADDLE_BOOST_MULTIPLIER : 1);
   if (keys["arrowleft"] || keys["a"]) {
-    movePaddleLeft();
+    movePaddleLeft(speed);
   }
   if (keys["arrowright"] || keys["d"]) {
-    paddle.x = paddle.x + paddle.speed;
+    paddle.x += speed;
   }
 
   // Keep the paddle on the screen.
@@ -628,6 +907,24 @@ function movePaddle() {
   }
   if (paddle.x + paddle.width > WIDTH) {
     paddle.x = WIDTH - paddle.width;
+  }
+
+  if (paddleSlowed) {
+    paddleTrail = [];
+  } else if (paddle.x !== previousX) {
+    paddleTrail.unshift({ x: previousX, life: PADDLE_TRAIL_LIFE });
+    if (paddleTrail.length > PADDLE_TRAIL_LENGTH) {
+      paddleTrail.pop();
+    }
+  }
+}
+
+function updatePaddleTrail() {
+  for (let index = paddleTrail.length - 1; index >= 0; index--) {
+    paddleTrail[index].life -= 1;
+    if (paddleTrail[index].life <= 0) {
+      paddleTrail.splice(index, 1);
+    }
   }
 }
 
@@ -642,6 +939,29 @@ function moveBall(ball) {
   }
 }
 
+function updateBallTrail(ball, moving = ballLaunched) {
+  const centerX = ball.x + ball.width / 2;
+  const centerY = ball.y + ball.height / 2;
+  if (!moving) {
+    ball.trail = Array.from({ length: BALL_TRAIL_LENGTH }, (_, index) => ({
+      x: centerX,
+      y: centerY + (index + 1) * 2.5
+    }));
+    return;
+  }
+
+  if (!ball.trail) {
+    ball.trail = [];
+  }
+  ball.trail.unshift({
+    x: centerX,
+    y: centerY
+  });
+  if (ball.trail.length > BALL_TRAIL_LENGTH) {
+    ball.trail.pop();
+  }
+}
+
 
 // ------------------------------------------------------------
 // DRAW: paints everything on the canvas. Black background,
@@ -651,12 +971,36 @@ function draw() {
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+  ctx.save();
+  if (shakeFrames > 0 && shakeStrength > 0) {
+    const fade = shakeFrames / 16;
+    ctx.translate(
+      (Math.random() * 2 - 1) * shakeStrength * fade,
+      (Math.random() * 2 - 1) * shakeStrength * fade
+    );
+  }
+
+  drawPaddleTrail();
   ctx.fillStyle = paddleSlowed ? "#ef4545" : "white";
   ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
-  for (const ball of balls) {
-    ctx.beginPath();
-    ctx.arc(ball.x + ball.width / 2, ball.y + ball.height / 2, ball.width / 2, 0, Math.PI * 2);
-    ctx.fill();
+  if (!deathScreen && !levelComplete) {
+    for (const ball of balls) {
+      drawBallTrail(ball);
+      const squishProgress = (ball.squish || 0) / BALL_SQUISH_FRAMES;
+      const squish = squishProgress * squishProgress * (3 - 2 * squishProgress);
+      ctx.fillStyle = paddleSlowed ? "#ef4545" : "white";
+      ctx.beginPath();
+      ctx.ellipse(
+        ball.x + ball.width / 2,
+        ball.y + ball.height / 2,
+        ball.width / 2 * (1 + 0.18 * squish),
+        ball.height / 2 * (1 - 0.18 * squish),
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
   }
 
   drawBricks();  // bricks.js
@@ -666,6 +1010,7 @@ function draw() {
   drawFallingPowerups();
   drawFallingSpikes();
   drawPaddleHitTexts();
+  drawComboTexts();
 
   if (deathScreen) {
     drawDeathScreen();
@@ -673,7 +1018,59 @@ function draw() {
   if (levelComplete) {
     drawLevelComplete();
   }
+  ctx.restore();
   drawHud();
+}
+
+function drawPaddleTrail() {
+  if (paddleSlowed) {
+    return;
+  }
+  ctx.save();
+  ctx.fillStyle = paddleSlowed ? "#ff7777" : "#b8e9ff";
+  for (const point of paddleTrail) {
+    ctx.globalAlpha = point.life / PADDLE_TRAIL_LIFE * 0.3;
+    ctx.fillRect(point.x, paddle.y, paddle.width, paddle.height);
+  }
+  ctx.restore();
+}
+
+function drawBallTrail(ball) {
+  if (!ball.trail || ball.trail.length === 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = paddleSlowed ? "#ef4545" : "#b8e9ff";
+  for (let index = ball.trail.length - 1; index >= 0; index--) {
+    const point = ball.trail[index];
+    const fade = 1 - index / ball.trail.length;
+    ctx.globalAlpha = fade * 0.28;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, ball.width / 2 * fade, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawComboTexts() {
+  ctx.save();
+  ctx.font = "18px 'Fredoka One', cursive";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const text of comboTexts) {
+    ctx.globalAlpha = text.life / text.maxLife;
+    ctx.fillStyle = text.rainbow
+      ? `hsl(${(performance.now() / 3 + text.value * 17) % 360}, 100%, 60%)`
+      : "#fff0a0";
+    if (text.rainbow) {
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 12;
+    }
+    ctx.fillText(`COMBO ${text.value}!`, text.x, text.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
 }
 
 function drawExplosions() {
@@ -731,15 +1128,15 @@ function drawExplosions() {
 
 function drawHud() {
   ctx.fillStyle = "white";
-  ctx.font = "18px sans-serif";
+  ctx.font = "18px 'Fredoka One', cursive";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, 16, 14);
   if (snipeAmmo > 0) {
     ctx.textAlign = "center";
-    ctx.font = "14px sans-serif";
+    ctx.font = "14px 'Fredoka One', cursive";
     ctx.fillText(`SNIPE AMMO ${snipeAmmo} | X TO FIRE`, WIDTH / 2, 14);
-    ctx.font = "18px sans-serif";
+    ctx.font = "18px 'Fredoka One', cursive";
   }
   ctx.textAlign = "right";
   ctx.fillText(`Level: ${level}`, WIDTH - 16, 14);
@@ -771,7 +1168,7 @@ function drawHeart(x, y, width, height) {
   ctx.bezierCurveTo(x + width * 0.62, y - height * 0.06, x + width, y + height * 0.02, x + width, y + height * 0.31);
   ctx.bezierCurveTo(x + width, y + height * 0.56, x + width * 0.68, y + height * 0.82, x + width / 2, y + height);
   ctx.fill();
-  ctx.strokeStyle = "grey";
+  ctx.strokeStyle = "#555";
   ctx.lineWidth = 2;
   ctx.stroke();
 }
@@ -784,7 +1181,7 @@ function drawFallingPowerups() {
       ctx.fillStyle = "#35d06f";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
       ctx.fillStyle = "black";
-      ctx.font = "bold 18px sans-serif";
+      ctx.font = "18px 'Fredoka One', cursive";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("+", centerX, centerY);
@@ -792,7 +1189,7 @@ function drawFallingPowerups() {
       ctx.fillStyle = "#25c6b7";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
       ctx.fillStyle = "#11665f";
-      ctx.font = "bold 12px sans-serif";
+      ctx.font = "12px 'Fredoka One', cursive";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("10", centerX, centerY);
@@ -800,7 +1197,7 @@ function drawFallingPowerups() {
       ctx.fillStyle = "#f05a70";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
       ctx.fillStyle = "white";
-      ctx.font = "bold 18px sans-serif";
+      ctx.font = "18px 'Fredoka One', cursive";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("+", centerX, centerY);
@@ -850,7 +1247,7 @@ function drawFallingSpikes() {
 function drawPaddleHitTexts() {
   ctx.save();
   ctx.fillStyle = "#ef4545";
-  ctx.font = "bold 16px sans-serif";
+  ctx.font = "16px 'Fredoka One', cursive";
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   for (const text of paddleHitTexts) {
@@ -867,33 +1264,43 @@ function drawDeathScreen() {
   ctx.fillStyle = "white";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "bold 34px sans-serif";
+  ctx.font = "34px 'Fredoka One', cursive";
   ctx.fillText("You died!", WIDTH / 2, HEIGHT / 2 - 42);
-  ctx.font = "20px sans-serif";
+  ctx.font = "20px 'Fredoka One', cursive";
   ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, WIDTH / 2, HEIGHT / 2 + 2);
-  ctx.font = "16px sans-serif";
+  ctx.font = "16px 'Fredoka One', cursive";
   ctx.fillText(GameState.lives > 0 ? "Press Enter to continue" : "Press Enter to restart", WIDTH / 2, HEIGHT / 2 + 42);
 }
 
 function drawLevelComplete() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
   ctx.fillStyle = "white";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "bold 30px sans-serif";
+  ctx.font = "30px 'Fredoka One', cursive";
   ctx.fillText(`Level ${level} complete!`, WIDTH / 2, HEIGHT / 2 - 58);
-  ctx.font = "18px sans-serif";
+  ctx.font = "18px 'Fredoka One', cursive";
   ctx.fillText(`Credits earned: +${creditsEarnedThisLevel}`, WIDTH / 2, HEIGHT / 2 - 18);
-  ctx.font = "16px sans-serif";
+  ctx.font = "16px 'Fredoka One', cursive";
   ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 48);
 }
 
 function drawParticles() {
   for (const particle of particles) {
-    ctx.globalAlpha = particle.life / particle.maxLife;
+    ctx.globalAlpha = particle.opaque
+      ? 1
+      : particle.life / particle.maxLife * (particle.alpha ?? 1);
     ctx.fillStyle = particle.color;
+    if (particle.glow) {
+      ctx.shadowColor = particle.color;
+      ctx.shadowBlur = 10;
+    }
     ctx.fillRect(particle.x, particle.y, particle.width, particle.height);
+    if (particle.glow) {
+      ctx.shadowBlur = 0;
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -940,38 +1347,31 @@ function start() {
 function loadShopProgress() {
   try {
     const saved = JSON.parse(window.localStorage.getItem(SHOP_STORAGE_KEY) || "{}");
-    const sniperOwned = saved.sniperUpgradeOwned === true;
-    const multiballOwned = saved.multiballUpgradeOwned === true;
-    const pentaballOwned = saved.pentaballUpgradeOwned === true;
+    const itemInventoryState = createDefaultItemInventory();
+    const savedItems = saved.itemInventory && typeof saved.itemInventory === "object" ? saved.itemInventory : {};
+
+    for (const itemKey of ITEM_ORDER) {
+      const savedItem = savedItems[itemKey] && typeof savedItems[itemKey] === "object" ? savedItems[itemKey] : {};
+      const legacyKey = itemKey === "snipe" ? "sniper" : itemKey;
+      const legacyOwned = saved[`${legacyKey}UpgradeOwned`];
+      const legacyEquipped = saved[`${legacyKey}UpgradeEquipped`];
+      const savedCount = Number.isInteger(savedItem.count) ? savedItem.count : 0;
+      const savedOwned = savedItem.owned === true || legacyOwned === true;
+
+      itemInventoryState[itemKey].count = Math.max(0, savedCount || (savedOwned ? 1 : 0));
+      itemInventoryState[itemKey].equipped = (savedItem.equipped === true || legacyEquipped === true) && itemInventoryState[itemKey].count > 0;
+    }
+
     return {
       credits: Number.isSafeInteger(saved.credits) && saved.credits >= 0 ? saved.credits : 0,
-      sniperUpgradeOwned: sniperOwned,
-      sniperUpgradeEquipped: sniperOwned && (
-        typeof saved.sniperUpgradeEquipped === "boolean"
-          ? saved.sniperUpgradeEquipped
-          : sniperOwned
-      ),
-      multiballUpgradeOwned: multiballOwned,
-      multiballUpgradeEquipped: multiballOwned && saved.multiballUpgradeEquipped === true,
-      pentaballUpgradeOwned: pentaballOwned,
-      pentaballUpgradeEquipped: pentaballOwned && saved.pentaballUpgradeEquipped === true,
-      explosiveUpgradeOwned: saved.explosiveUpgradeOwned === true,
-      explosiveUpgradeEquipped: saved.explosiveUpgradeOwned === true && saved.explosiveUpgradeEquipped === true
+      itemInventory: itemInventoryState
     };
   } catch (error) {
     console.error("Could not load saved shop progress.", error);
     shopStorageError = true;
-    shopStatus.textContent = "Saved shop progress could not be loaded.";
     return {
       credits: 0,
-      sniperUpgradeOwned: false,
-      sniperUpgradeEquipped: false,
-      multiballUpgradeOwned: false,
-      multiballUpgradeEquipped: false,
-      pentaballUpgradeOwned: false,
-      pentaballUpgradeEquipped: false,
-      explosiveUpgradeOwned: false,
-      explosiveUpgradeEquipped: false
+      itemInventory: createDefaultItemInventory()
     };
   }
 }
@@ -980,64 +1380,92 @@ function persistShopProgress() {
   try {
     window.localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify({
       credits: GameState.credits,
-      sniperUpgradeOwned,
-      sniperUpgradeEquipped,
-      multiballUpgradeOwned,
-      multiballUpgradeEquipped,
-      pentaballUpgradeOwned,
-      pentaballUpgradeEquipped,
-      explosiveUpgradeOwned,
-      explosiveUpgradeEquipped
+      itemInventory
     }));
     shopStorageError = false;
     return true;
   } catch (error) {
     console.error("Could not save shop progress.", error);
     shopStorageError = true;
-    shopStatus.textContent = "Could not save shop progress; it will be lost when you leave.";
     return false;
   }
 }
 
 function updateShopDisplay() {
-  const balanceText = `Credits: ${GameState.credits}`;
+  const balanceText = `Credits: ${formatCredits(GameState.credits)}`;
   creditBalance.textContent = balanceText;
-  buySniperButton.setAttribute("aria-pressed", String(sniperUpgradeOwned && sniperUpgradeEquipped));
-  buySniperButton.textContent = sniperUpgradeOwned
-    ? (sniperUpgradeEquipped ? "Equipped" : "Equip")
-    : `Buy for ${SNIPER_UPGRADE_COST}`;
-  buySniperButton.dataset.defaultLabel = buySniperButton.textContent;
-  buyMultiballButton.setAttribute("aria-pressed", String(multiballUpgradeOwned && multiballUpgradeEquipped));
-  buyMultiballButton.textContent = multiballUpgradeOwned
-    ? (multiballUpgradeEquipped ? "Equipped" : "Equip")
-    : `Buy for ${MULTIBALL_UPGRADE_COST}`;
-  buyMultiballButton.dataset.defaultLabel = buyMultiballButton.textContent;
-  buyPentaballButton.setAttribute("aria-pressed", String(pentaballUpgradeOwned && pentaballUpgradeEquipped));
-  buyPentaballButton.textContent = pentaballUpgradeOwned
-    ? (pentaballUpgradeEquipped ? "Equipped" : "Equip")
-    : `Buy for ${PENTABALL_UPGRADE_COST}`;
-  buyPentaballButton.dataset.defaultLabel = buyPentaballButton.textContent;
-  buyExplosiveButton.setAttribute("aria-pressed", String(explosiveUpgradeOwned && explosiveUpgradeEquipped));
-  buyExplosiveButton.textContent = explosiveUpgradeOwned
-    ? (explosiveUpgradeEquipped ? "Equipped" : "Equip")
-    : `Buy for ${EXPLOSIVE_UPGRADE_COST}`;
-  buyExplosiveButton.dataset.defaultLabel = buyExplosiveButton.textContent;
+  openChestButton.disabled = GameState.credits < CHEST_COST;
+  openChestButton.textContent = `Open chest · ${CHEST_COST}`;
+
+  shopList.innerHTML = ITEM_ORDER.map((itemKey) => {
+    const item = ITEM_DEFS[itemKey];
+    const itemState = itemInventory[itemKey];
+    const owned = itemState.count > 0;
+    const equipped = itemState.equipped;
+    const previewText = owned ? item.previewText : "?";
+    const rarityLabel = `${item.dropChance}%`;
+    const nameLabel = owned ? item.name : "???";
+    const descriptionText = owned ? item.description : "???";
+    const actionLabel = owned ? (equipped ? "Unequip" : "Equip") : "Not found";
+
+    return `
+      <div class="shop-item ${owned ? "" : "mystery-item"}">
+        <h3>${nameLabel}</h3>
+        <div class="shop-item-content">
+          <span class="${owned ? item.previewClass : "mystery-preview"}" aria-label="${owned ? item.name : "Mystery item"} preview">${previewText}</span>
+          <div class="shop-copy">
+            <span class="rarity-pill rarity-${item.rarity}">${rarityLabel}</span>
+            <p>${descriptionText}</p>
+          </div>
+          <div class="shop-actions">
+            <button type="button" data-item-key="${itemKey}" data-action="equip" ${owned ? "" : "disabled"}>${actionLabel}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  shopList.querySelectorAll("[data-item-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleItemEquipment(button.dataset.itemKey);
+    });
+  });
+}
+
+function formatCredits(credits) {
+  const units = [
+    { value: 1_000_000_000, suffix: "b" },
+    { value: 1_000_000, suffix: "m" },
+    { value: 1_000, suffix: "k" }
+  ];
+  const unit = units.find(({ value }) => credits >= value);
+  if (!unit) {
+    return String(credits);
+  }
+  let roundedValue = Math.round(credits / unit.value * 10) / 10;
+  let suffix = unit.suffix;
+  if (roundedValue >= 1_000 && unit.suffix !== "b") {
+    const nextUnit = units[units.indexOf(unit) - 1];
+    roundedValue = Math.round(credits / nextUnit.value * 10) / 10;
+    suffix = nextUnit.suffix;
+  }
+  return `${roundedValue.toFixed(1).replace(/\.0$/, "")}${suffix}`;
 }
 
 function makeBricksForRound(roundLevel) {
   const roundBricks = makeBricks(roundLevel);
   equippedBrickOriginals = new Map();
-  if (sniperUpgradeEquipped) {
+  if (itemInventory.snipe.equipped) {
     addEquippedBricks(roundBricks, "snipe");
   }
-  if (multiballUpgradeEquipped) {
+  if (itemInventory.multiball.equipped) {
     const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
     addEquippedBricks(roundBricks, "multiball", multiballBrickCount);
   }
-  if (pentaballUpgradeEquipped) {
+  if (itemInventory.pentaball.equipped) {
     addEquippedBricks(roundBricks, "pentaball");
   }
-  if (explosiveUpgradeEquipped) {
+  if (itemInventory.explosive.equipped) {
     const explosiveBrickCount = Math.floor(Math.random() * 2) + 1;
     addEquippedBricks(roundBricks, "explosive", explosiveBrickCount);
   }
@@ -1092,14 +1520,151 @@ function awardRoundCredits() {
   return earned;
 }
 
+function openChest() {
+  if (GameState.credits < CHEST_COST) {
+    showInsufficientFunds(openChestButton);
+    return;
+  }
+
+  GameState.credits -= CHEST_COST;
+  const itemKey = rollChestItem();
+  const item = ITEM_DEFS[itemKey];
+
+  if (itemInventory[itemKey].count > 0) {
+    const duplicateValue = Math.round(item.sellPrice / 10);
+    GameState.credits += duplicateValue;
+    revealChestItem(item, item.dropChance, duplicateValue, itemKey);
+    updateShopDisplay();
+    persistShopProgress();
+    return;
+  }
+
+  itemInventory[itemKey].count = 1;
+  itemInventory[itemKey].equipped = false;
+  revealChestItem(item, item.dropChance, null, itemKey);
+  updateShopDisplay();
+  persistShopProgress();
+}
+
+function drawChestRevealCanvas(item, dropChance, duplicateValue = null, itemKey) {
+  const revealCtx = chestRevealCanvas.getContext("2d");
+  const width = chestRevealCanvas.width;
+  const height = chestRevealCanvas.height;
+
+  revealCtx.clearRect(0, 0, width, height);
+  revealCtx.fillStyle = "rgba(14, 14, 18, 0.96)";
+  revealCtx.fillRect(0, 0, width, height);
+
+  revealCtx.strokeStyle = "#f4f4f4";
+  revealCtx.lineWidth = 2;
+  revealCtx.strokeRect(10, 10, width - 20, height - 20);
+
+  revealCtx.fillStyle = "#d7d7d7";
+  revealCtx.font = "12px 'Fredoka One', cursive";
+  revealCtx.textAlign = "center";
+  revealCtx.fillText("LOOT FOUND", width / 2, 32);
+
+  const iconBoxX = width / 2 - 42;
+  const iconBoxY = 48;
+  const iconBoxSize = 84;
+
+  revealCtx.fillStyle = "rgba(255, 255, 255, 0.08)";
+  revealCtx.fillRect(iconBoxX, iconBoxY, iconBoxSize, iconBoxSize);
+  revealCtx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+  revealCtx.strokeRect(iconBoxX, iconBoxY, iconBoxSize, iconBoxSize);
+
+  drawChestBrickIcon(revealCtx, itemKey, width / 2 - 34, 73, 68, 34);
+
+  revealCtx.textBaseline = "alphabetic";
+  revealCtx.font = "22px 'Fredoka One', cursive";
+  revealCtx.fillText(item.name, width / 2, 158);
+
+  revealCtx.font = "14px 'Fredoka One', cursive";
+  revealCtx.fillStyle = "#d7d7d7";
+  revealCtx.fillText(`${dropChance}% drop`, width / 2, 180);
+
+  revealCtx.font = "18px 'Fredoka One', cursive";
+  revealCtx.fillStyle = duplicateValue !== null ? "#ffd36b" : "#b7f0c1";
+  revealCtx.fillText(
+    duplicateValue !== null ? `Dupe: sold for ${duplicateValue}` : "New item found!",
+    width / 2,
+    203
+  );
+}
+
+function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
+  const style = POWERUP_STYLES[itemKey];
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  revealCtx.fillStyle = style.color;
+  revealCtx.fillRect(x, y, width, height);
+  revealCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+  revealCtx.lineWidth = 1;
+  revealCtx.strokeRect(x, y, width, height);
+  revealCtx.fillStyle = style.darkerColor;
+
+  if (itemKey === "multiball") {
+    revealCtx.beginPath();
+    revealCtx.arc(centerX, centerY, height * 0.2, 0, Math.PI * 2);
+    revealCtx.fill();
+  } else if (itemKey === "pentaball") {
+    revealCtx.font = "11px 'Fredoka One', cursive";
+    revealCtx.textAlign = "center";
+    revealCtx.textBaseline = "middle";
+    revealCtx.fillText("PENTA", centerX, centerY);
+  } else if (itemKey === "heart") {
+    revealCtx.font = "22px 'Fredoka One', cursive";
+    revealCtx.textAlign = "center";
+    revealCtx.textBaseline = "middle";
+    revealCtx.fillText("+", centerX, centerY);
+  } else if (itemKey === "spike") {
+    revealCtx.beginPath();
+    revealCtx.moveTo(centerX, centerY - height * 0.3);
+    revealCtx.lineTo(centerX + width * 0.12, centerY + height * 0.27);
+    revealCtx.lineTo(centerX - width * 0.12, centerY + height * 0.27);
+    revealCtx.closePath();
+    revealCtx.fill();
+  } else if (itemKey === "explosive") {
+    revealCtx.beginPath();
+    for (let point = 0; point < 12; point++) {
+      const angle = point / 12 * Math.PI * 2 - Math.PI / 2;
+      const radius = point % 2 === 0 ? height * 0.38 : height * 0.17;
+      const pointX = centerX + Math.cos(angle) * radius;
+      const pointY = centerY + Math.sin(angle) * radius;
+      if (point === 0) {
+        revealCtx.moveTo(pointX, pointY);
+      } else {
+        revealCtx.lineTo(pointX, pointY);
+      }
+    }
+    revealCtx.closePath();
+    revealCtx.fill();
+    revealCtx.fillStyle = "#fff0a0";
+    revealCtx.beginPath();
+    revealCtx.arc(centerX, centerY, 2, 0, Math.PI * 2);
+    revealCtx.fill();
+  } else {
+    revealCtx.font = "13px 'Fredoka One', cursive";
+    revealCtx.textAlign = "center";
+    revealCtx.textBaseline = "middle";
+    revealCtx.fillText("SNIPE", centerX, centerY);
+  }
+}
+
+function closeChestReveal() {
+  chestReveal.hidden = true;
+  chestReveal.onclick = null;
+}
+
+function revealChestItem(item, dropChance, duplicateValue = null, itemKey) {
+  chestReveal.hidden = false;
+  chestReveal.onclick = closeChestReveal;
+  drawChestRevealCanvas(item, dropChance, duplicateValue, itemKey);
+}
+
 function openShop() {
   shopOpen = true;
   shopMenu.hidden = false;
-  if (shopStorageError) {
-    shopStatus.textContent = "Shop progress could not be saved; changes may be lost when you leave.";
-  } else {
-    shopStatus.textContent = "";
-  }
   closeShopButton.focus();
 }
 
@@ -1115,6 +1680,7 @@ function resetCredits() {
   }
 
   GameState.credits = 0;
+  itemInventory = createDefaultItemInventory();
   updateShopDisplay();
   persistShopProgress();
 }
@@ -1147,97 +1713,25 @@ function exitMenu() {
   }
 }
 
-function purchaseSniperUpgrade() {
-  purchaseOrToggleShopItem({
-    owned: sniperUpgradeOwned,
-    equipped: sniperUpgradeEquipped,
-    cost: SNIPER_UPGRADE_COST,
-    special: "snipe",
-    button: buySniperButton,
-    onPurchase: () => {
-      sniperUpgradeOwned = true;
-    },
-    onEquip: (equipped) => {
-      sniperUpgradeEquipped = equipped;
-    }
-  });
-}
+function toggleItemEquipment(itemKey) {
+  const itemState = itemInventory[itemKey];
+  if (!itemState || itemState.count <= 0) {
+    return;
+  }
 
-function purchaseMultiballUpgrade() {
-  purchaseOrToggleShopItem({
-    owned: multiballUpgradeOwned,
-    equipped: multiballUpgradeEquipped,
-    cost: MULTIBALL_UPGRADE_COST,
-    special: "multiball",
-    button: buyMultiballButton,
-    onPurchase: () => {
-      multiballUpgradeOwned = true;
-    },
-    onEquip: (equipped) => {
-      multiballUpgradeEquipped = equipped;
-    }
-  });
-}
+  const nextEquipped = !itemState.equipped;
+  itemState.equipped = nextEquipped;
 
-function purchasePentaballUpgrade() {
-  purchaseOrToggleShopItem({
-    owned: pentaballUpgradeOwned,
-    equipped: pentaballUpgradeEquipped,
-    cost: PENTABALL_UPGRADE_COST,
-    special: "pentaball",
-    button: buyPentaballButton,
-    onPurchase: () => {
-      pentaballUpgradeOwned = true;
-    },
-    onEquip: (equipped) => {
-      pentaballUpgradeEquipped = equipped;
-    }
-  });
-}
-
-function purchaseExplosiveUpgrade() {
-  purchaseOrToggleShopItem({
-    owned: explosiveUpgradeOwned,
-    equipped: explosiveUpgradeEquipped,
-    cost: EXPLOSIVE_UPGRADE_COST,
-    special: "explosive",
-    button: buyExplosiveButton,
-    onPurchase: () => {
-      explosiveUpgradeOwned = true;
-    },
-    onEquip: (equipped) => {
-      explosiveUpgradeEquipped = equipped;
-    }
-  });
-}
-
-function purchaseOrToggleShopItem(item) {
-  if (!item.owned) {
-    if (GameState.credits < item.cost) {
-      showInsufficientFunds(item.button);
-      return;
-    }
-
-    GameState.credits -= item.cost;
-    item.onPurchase();
+  if (nextEquipped) {
+    const count = itemKey === "multiball" ? Math.floor(Math.random() * 4) + 1 : 1;
+    addEquippedBricks(bricks, itemKey, count);
   } else {
-    const equipped = !item.equipped;
-    item.onEquip(equipped);
-    if (equipped) {
-      const count = item.special === "multiball"
-        ? Math.floor(Math.random() * 4) + 1
-        : 1;
-      addEquippedBricks(bricks, item.special, count);
-    } else {
-      removeEquippedBrick(item.special);
-    }
+    removeEquippedBrick(itemKey);
   }
 
   updateShopDisplay();
-  shopStatus.textContent = persistShopProgress()
-    ? ""
-    : "Shop progress could not be saved; changes may be lost when you leave.";
 }
+
 
 function showInsufficientFunds(button) {
   const previousTimer = purchaseFeedbackTimers.get(button);
@@ -1245,13 +1739,13 @@ function showInsufficientFunds(button) {
     window.clearTimeout(previousTimer);
   }
 
-  button.textContent = "Not enough money";
+  button.textContent = "Not enough credits";
   button.classList.remove("insufficient-funds");
   void button.offsetWidth;
   button.classList.add("insufficient-funds");
 
   const timer = window.setTimeout(() => {
-    button.textContent = button.dataset.defaultLabel;
+    button.textContent = button.dataset.defaultLabel || `Open chest · ${CHEST_COST}`;
     button.classList.remove("insufficient-funds");
     purchaseFeedbackTimers.delete(button);
   }, 1200);

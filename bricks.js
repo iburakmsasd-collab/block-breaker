@@ -10,6 +10,8 @@ const BRICK_GAP = 6;     // empty space between bricks
 const BRICKS_TOP = 50;   // how far down the first row starts
 const BRICK_CHECKER_COLUMNS = 12;
 const BRICK_CHECKER_ROWS = 6;
+const BRICK_HIT_FLASH_FRAMES = 6;
+const BRICK_BREAK_DELAY_FRAMES = 5;
 const POWERUP_STYLES = {
   multiball: { color: "#35d06f", darkerColor: "#176b3a" },
   pentaball: { color: "#25c6b7", darkerColor: "#11665f" },
@@ -20,13 +22,6 @@ const POWERUP_STYLES = {
 };
 
 function stayStill(brick) {}
-
-function slide(brick) {
-  brick.x += brick.speed;
-  if (Math.abs(brick.x - brick.startX) > 30) {
-    brick.speed *= -1;
-  }
-}
 
 // Builds the list of bricks. Each brick is an object with an
 // x, y, width, and height.
@@ -72,8 +67,8 @@ function makeBricks(level = 1) {
       list.push({
         x,
         startX: x,
-        move: row === 0 ? slide : stayStill,
-        speed: row === 0 ? 2 : 0,
+        move: stayStill,
+        speed: 0,
         y,
         targetY: y,
         width: BRICK_WIDTH,
@@ -128,12 +123,12 @@ function drawBricks() {
         ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
         ctx.fill();
       } else if (brick.special === "pentaball") {
-        ctx.font = "bold 11px sans-serif";
+        ctx.font = "11px 'Fredoka One', cursive";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("PENTA", centerX, centerY);
       } else if (brick.special === "heart") {
-        ctx.font = "bold 20px sans-serif";
+        ctx.font = "20px 'Fredoka One', cursive";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("+", centerX, centerY);
@@ -167,11 +162,18 @@ function drawBricks() {
         ctx.fill();
         ctx.restore();
       } else {
-        ctx.font = "bold 14px sans-serif";
+        ctx.font = "14px 'Fredoka One', cursive";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("SNIPE", centerX, centerY);
       }
+    }
+
+    if (brick.hitFlashFrames > 0) {
+      ctx.save();
+      ctx.fillStyle = "white";
+      ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+      ctx.restore();
     }
   }
 }

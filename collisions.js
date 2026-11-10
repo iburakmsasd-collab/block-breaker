@@ -41,6 +41,26 @@ function bounceOffWalls(ball) {
 function bounceOffPaddle(ball) {
   if (boxesTouch(ball, paddle) && ball.vy > 0) {
     ball.y = paddle.y - ball.height;  // sit on top of the paddle
+    ball.squish = BALL_SQUISH_FRAMES;
+    brickCombo = 0;
+    lastComboDisplayValue = 0;
+    shakeFrames = 0;
+    shakeStrength = 0;
+    for (let index = 0; index < 12; index++) {
+      particles.push({
+        x: ball.x + ball.width / 2 + (Math.random() - 0.5) * ball.width,
+        y: paddle.y,
+        width: 3,
+        height: 3,
+        vx: (Math.random() - 0.5) * 4,
+        vy: -1 - Math.random() * 2.5,
+        life: 18,
+        maxLife: 18,
+        alpha: 1,
+        glow: true,
+        color: "#fff6a0"
+      });
+    }
     const impactOffset = (ball.x + ball.width / 2 - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
     const clampedOffset = Math.max(-1, Math.min(1, impactOffset));
     const speed = Math.hypot(ball.vx, ball.vy);
@@ -51,20 +71,30 @@ function bounceOffPaddle(ball) {
 
 
 function breakBrickIntoParticles(brick) {
-  const columns = 5;
-  const rows = 4;
-  const particleSize = Math.min(brick.width / columns, brick.height / rows);
+  const rows = 6;
+  const columnsByRow = [8, 10, 12, 10, 8, 12];
   for (let row = 0; row < rows; row++) {
+    const columns = columnsByRow[row];
+    const particleWidth = brick.width / columns;
+    const particleHeight = brick.height / rows;
     for (let column = 0; column < columns; column++) {
+      const particleX = brick.x + column * particleWidth;
+      const particleY = brick.y + row * particleHeight;
+      const offsetX = particleX + particleWidth / 2 - (brick.x + brick.width / 2);
+      const offsetY = particleY + particleHeight / 2 - (brick.y + brick.height / 2);
+      const distance = Math.hypot(offsetX, offsetY) || 1;
+      const speed = 1 + Math.random() * 2.2;
+      const isExplosive = brick.special === "explosive";
       particles.push({
-        x: brick.x + (column + 0.5) * brick.width / columns - particleSize / 2,
-        y: brick.y + (row + 0.5) * brick.height / rows - particleSize / 2,
-        width: particleSize,
-        height: particleSize,
-        vx: 0,
-        vy: 1 + Math.random() * 3,
-        life: 45,
-        maxLife: 45,
+        x: particleX,
+        y: particleY,
+        width: particleWidth,
+        height: particleHeight,
+        vx: isExplosive ? 0 : offsetX / distance * speed,
+        vy: isExplosive ? 1 + Math.random() * 3 : offsetY / distance * speed,
+        life: 28,
+        maxLife: 28,
+        opaque: true,
         color: brick.color
       });
     }
@@ -81,15 +111,23 @@ function breakCheckerTilesIntoParticles(brick, darkerTiles) {
         continue;
       }
 
+      const tileX = brick.x + column * tileWidth;
+      const tileY = brick.y + row * tileHeight;
+      const isExplosive = brick.special === "explosive";
+      const offsetX = tileX + tileWidth / 2 - (brick.x + brick.width / 2);
+      const offsetY = tileY + tileHeight / 2 - (brick.y + brick.height / 2);
+      const distance = Math.hypot(offsetX, offsetY) || 1;
+      const speed = 0.8 + Math.random() * 1.8;
       particles.push({
-        x: brick.x + column * tileWidth,
-        y: brick.y + row * tileHeight,
+        x: tileX,
+        y: tileY,
         width: tileWidth,
         height: tileHeight,
-        vx: (Math.random() - 0.5) * 2,
-        vy: 1 + Math.random() * 2,
-        life: 45,
-        maxLife: 45,
+        vx: isExplosive ? (Math.random() - 0.5) * 2 : offsetX / distance * speed,
+        vy: isExplosive ? 1 + Math.random() * 2 : offsetY / distance * speed,
+        life: 28,
+        maxLife: 28,
+        opaque: true,
         color: isDarkerTile ? brick.darkerColor : brick.color
       });
     }
@@ -97,16 +135,35 @@ function breakCheckerTilesIntoParticles(brick, darkerTiles) {
 }
 
 function damageBrick(brick) {
-  brick.hitstillbroken -= 1;
-  if (brick.darkerColor) {
-    breakCheckerTilesIntoParticles(brick, brick.hitstillbroken <= 0);
+  if (brick.pendingDestroy) {
+    return;
   }
 
+  brick.hitstillbroken -= 1;
+  brick.hitFlashFrames = BRICK_HIT_FLASH_FRAMES;
+
   if (brick.hitstillbroken <= 0) {
-    if (!brick.darkerColor) {
+    brick.pendingDestroy = true;
+    brick.pendingDestroyFrames = BRICK_BREAK_DELAY_FRAMES;
+    if (brick.darkerColor) {
+      breakCheckerTilesIntoParticles(brick, false);
+      breakCheckerTilesIntoParticles(brick, true);
+    } else {
       breakBrickIntoParticles(brick);
     }
-    destroyBrick(brick, true);
+  } else if (brick.darkerColor) {
+    breakCheckerTilesIntoParticles(brick, false);
+  }
+}
+
+function updateBrickEffects() {
+  for (const brick of [...bricks]) {
+    if (brick.hitFlashFrames > 0) {
+      brick.hitFlashFrames -= 1;
+    }
+    if (brick.pendingDestroy && --brick.pendingDestroyFrames <= 0) {
+      destroyBrick(brick, true);
+    }
   }
 }
 
@@ -128,9 +185,9 @@ function destroyBrick(brick, particlesAlreadyEmitted = false, suppressExplosion 
 }
 
 // The ball bounces off bricks and removes each one after enough hits.
-function bounceOffBricks(ball) {
+function bounceOffBricks(ball, damage = true) {
   for (const brick of [...bricks]) {
-    if (!boxesTouch(ball, brick)) {
+    if (brick.pendingDestroy || !boxesTouch(ball, brick)) {
       continue;  // not touching this brick, check the next one
     }
 
@@ -156,7 +213,9 @@ function bounceOffBricks(ball) {
       }
     }
 
-    damageBrick(brick);
+    if (damage) {
+      damageBrick(brick);
+    }
     break;  // bounce off one brick per update, then stop looking
   }
 }
