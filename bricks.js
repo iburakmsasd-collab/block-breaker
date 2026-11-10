@@ -21,7 +21,7 @@ const POWERUP_STYLES = {
   explosive: { color: "#ffad33", darkerColor: "#a82f0d" }
 };
 
-function stayStill(brick) {}
+function stayStill() {}
 
 // Builds the list of bricks. Each brick is an object with an
 // x, y, width, and height.
@@ -29,12 +29,11 @@ function makeBricks(level = 1) {
   const list = [];
   const specialIndexes = new Map();
   if (level >= 2) {
-    const specialTypes = ["spike"];
-    const specialCount = BRICK_COLUMNS;
-    while (specialIndexes.size < specialCount) {
+    const spikeCount = Math.floor(Math.random() * 4) + 1;
+    while (specialIndexes.size < spikeCount) {
       const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
       if (!specialIndexes.has(index)) {
-        specialIndexes.set(index, specialTypes[specialIndexes.size % specialTypes.length]);
+        specialIndexes.set(index, "spike");
       }
     }
     let heartIndex;
@@ -44,7 +43,8 @@ function makeBricks(level = 1) {
     specialIndexes.set(heartIndex, "heart");
   }
   const twoHitIndexes = new Set();
-  while (twoHitIndexes.size < 8) {
+  const twoHitCount = level === 1 ? 0 : 8;
+  while (twoHitIndexes.size < twoHitCount) {
     const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
     if (!specialIndexes.has(index)) {
       twoHitIndexes.add(index);

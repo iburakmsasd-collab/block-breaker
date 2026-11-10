@@ -11,18 +11,21 @@
 </head>
 <body>
   <main>
-    <form id="level-code-form" class="level-code">
+    <div class="level-code">
       <output id="credit-balance" class="credit-balance">Credits: 0</output>
-      <label for="level-code">Code</label>
-      <input id="level-code" name="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off">
-    </form>
+      <div class="level-code-actions">
+        <button id="skip-level" class="menu-button admin-skip-button" type="button" hidden>Skip Level</button>
+        <button id="open-main-menu" class="menu-button" type="button">Menu</button>
+      </div>
+    </div>
     <section class="game-stage" aria-label="Block Breaker">
       <div class="game-board">
-        <canvas id="game" width="600" height="450" tabindex="-1" aria-label="Block Breaker game"></canvas>
+        <canvas id="game" width="720" height="540" tabindex="-1" aria-label="Block Breaker game"></canvas>
         <div id="start-menu" class="start-menu">
-          <canvas id="menu-canvas" width="600" height="450" aria-hidden="true"></canvas>
+          <canvas id="menu-canvas" width="720" height="540" aria-hidden="true"></canvas>
           <button id="start-game" type="button">Start Game</button>
           <button id="open-shop" type="button">Shop</button>
+          <button id="open-stats" type="button">Stats</button>
           <button id="open-settings" type="button">Settings</button>
         </div>
         <section id="shop-menu" class="shop-menu" aria-labelledby="shop-title" hidden>
@@ -33,17 +36,55 @@
           <div class="contains-row">Contains:</div>
           <div id="shop-list" class="shop-list" aria-live="polite"></div>
           <div id="chest-reveal" class="chest-reveal" hidden>
-            <canvas id="chest-reveal-canvas" width="420" height="220" aria-label="Chest reveal canvas"></canvas>
+            <canvas id="chest-reveal-canvas" width="500" height="262" aria-label="Chest reveal canvas"></canvas>
           </div>
           <button id="close-shop" class="menu-back-button" type="button">Back</button>
         </section>
         <section id="settings-menu" class="shop-menu" aria-labelledby="settings-title" hidden>
           <h2 id="settings-title">Settings</h2>
           <div class="shop-item settings-item">
-            <h3>Reset Credits</h3>
+            <h3>Reset all stats</h3>
             <button id="reset-credits" type="button">Reset</button>
           </div>
+          <form id="level-code-form" class="settings-code-form">
+            <div class="level-code-entry">
+              <label for="level-code">Admin code</label>
+              <input id="level-code" name="code" type="password" inputmode="text" autocomplete="off" spellcheck="false">
+            </div>
+            <output id="code-status" class="admin-status" aria-live="polite"></output>
+          </form>
+          <div id="admin-tools" class="admin-tools" hidden>
+            <div class="admin-divider"><span>ADMIN PANEL</span></div>
+            <section class="admin-panel" aria-label="Admin panel">
+              <form id="admin-money-form" class="admin-control">
+                <label for="admin-money">Set your money</label>
+                <div class="admin-control-actions">
+                  <input id="admin-money" name="money" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" required>
+                  <button type="submit">Set money</button>
+                </div>
+              </form>
+              <form id="admin-brick-form" class="admin-control">
+                <label for="admin-brick">Buy a brick for free</label>
+                <div class="admin-control-actions">
+                  <select id="admin-brick" name="brick"></select>
+                  <button type="submit">Buy brick</button>
+                </div>
+              </form>
+              <output id="admin-status" class="admin-status" aria-live="polite"></output>
+            </section>
+          </div>
           <button id="close-settings" class="menu-back-button" type="button">Back</button>
+        </section>
+        <section id="stats-menu" class="shop-menu" aria-labelledby="stats-title" hidden>
+          <h2 id="stats-title">Stats</h2>
+          <dl class="stats-list">
+            <div><dt>Highest combo</dt><dd id="stat-highest-combo">0</dd></div>
+            <div><dt>Most money ever</dt><dd id="stat-most-money">0</dd></div>
+            <div><dt>Total money</dt><dd id="stat-total-money">0</dd></div>
+            <div><dt>Total chests opened</dt><dd id="stat-chests-opened">0</dd></div>
+            <div><dt>Highest level reached</dt><dd id="stat-highest-level">1</dd></div>
+          </dl>
+          <button id="close-stats" class="menu-back-button" type="button">Back</button>
         </section>
       </div>
       <h1 id="game-title" class="game-title">Block Breaker</h1>

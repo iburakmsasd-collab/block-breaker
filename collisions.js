@@ -42,10 +42,10 @@ function bounceOffPaddle(ball) {
   if (boxesTouch(ball, paddle) && ball.vy > 0) {
     ball.y = paddle.y - ball.height;  // sit on top of the paddle
     ball.squish = BALL_SQUISH_FRAMES;
+    paddleHitFlashFrames = 8;
+    paddleHitFlashX = Math.max(paddle.x, Math.min(paddle.x + paddle.width, ball.x + ball.width / 2));
     brickCombo = 0;
     lastComboDisplayValue = 0;
-    shakeFrames = 0;
-    shakeStrength = 0;
     for (let index = 0; index < 12; index++) {
       particles.push({
         x: ball.x + ball.width / 2 + (Math.random() - 0.5) * ball.width,
@@ -94,6 +94,7 @@ function breakBrickIntoParticles(brick) {
         vy: isExplosive ? 1 + Math.random() * 3 : offsetY / distance * speed,
         life: 28,
         maxLife: 28,
+        fadeFrames: 6,
         opaque: true,
         color: brick.color
       });
@@ -127,6 +128,7 @@ function breakCheckerTilesIntoParticles(brick, darkerTiles) {
         vy: isExplosive ? 1 + Math.random() * 2 : offsetY / distance * speed,
         life: 28,
         maxLife: 28,
+        fadeFrames: 6,
         opaque: true,
         color: isDarkerTile ? brick.darkerColor : brick.color
       });
