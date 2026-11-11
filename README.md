@@ -14,17 +14,21 @@ Press Ctrl+C in the terminal to stop it. Set `PORT` to use a different port.
 
 Earn 100 credits for each completed round, plus 30 for every life above three.
 After rounds 1–9, choose Sniper (which adds 1–3 one-shot ammo bricks to each
-later round) or Paddle (a 50% wider paddle for the next round); the next round
-starts immediately. Each collected Sniper ammo brick gives one shot. Losing
-all lives clears these run power-ups. Completing round 10 wins the game and
-awards an additional 1000 credits.
+later round), Paddle (a 50% wider paddle for the next round), or Time Machine
+(which adds a pickup that slows the game for 5 seconds without slowing the
+paddle); the next round starts immediately. Paddle is available to every
+player, while Sniper and Time Machine must be found in the Powerups chest.
+Each collected Sniper ammo brick gives one shot. Losing all lives clears these
+run power-ups. Completing round 10 wins the game and awards an additional
+1000 credits.
 
 The shop has separate Bricks and Powerups tabs, each with a 250-credit chest.
 Chest unlocks, credits, and equipment are saved in this browser. Equip an
 unlocked brick to add its pickup to future rounds. The Bricks chest contains
-Multiball, Explosive, and Pentaball Bricks; the Powerups chest contains Sniper
-and Paddle upgrades, which are chosen after a round; only the selected Sniper
-upgrade adds ammo bricks. Heal Bricks are no longer sold and instead appear in rounds
+Multiball, Explosive, and Pentaball Bricks; the Powerups chest contains Sniper,
+Paddle, and the rarer Time Machine. Owned powerups appear as choices after a
+round; selecting Sniper adds ammo bricks and selecting Time Machine adds a
+time-slow pickup. Heal Bricks are no longer sold and instead appear in rounds
 starting at level 2. Levels 2–4 have one, levels 5–8 and 10 have two, and level
 9 has two or four. The four-second chest reel shows the item and its odds.
 

@@ -52,8 +52,10 @@ const gameTitle = document.getElementById("game-title");
 const menuCanvas = document.getElementById("menu-canvas");
 const menuCtx = menuCanvas.getContext("2d");
 const roundReward = document.getElementById("round-reward");
+const roundRewardRoundTitle = document.getElementById("round-complete-title");
 const roundRewardTitle = document.getElementById("round-reward-title");
 const roundRewardDetails = document.getElementById("round-reward-details");
+const roundRewardShopHint = document.getElementById("round-reward-shop-hint");
 const roundRewardOptions = document.getElementById("round-reward-options");
 const finishRunButton = document.getElementById("finish-run");
 const returnToMenuButton = document.getElementById("return-to-menu");
@@ -66,19 +68,22 @@ const PADDLE_TRAIL_LENGTH = 10;
 const PADDLE_TRAIL_LIFE = 12;
 const CHEST_COST = 250;
 const CHEST_ROLL_DURATION = 4000;
+const ROUND_REWARD_REVEAL_DELAY = 500;
+const LEVEL_COMPLETE_FADE_FRAMES = 18;
+const TIME_MACHINE_DURATION = 5000;
 const PADDLE_BASE_WIDTH = 90;
 const PADDLE_WIDE_WIDTH = 135;
 const PADDLE_RESIZE_RATE = 0.18;
 const SHOP_STORAGE_KEY = "block-breaker-shop";
-const ITEM_ORDER = ["multiball", "snipe", "explosive", "pentaball", "paddle"];
+const ITEM_ORDER = ["multiball", "snipe", "explosive", "pentaball", "paddle", "timeMachine"];
 const BRICK_ITEM_ORDER = ["multiball", "explosive", "pentaball"];
 const SHOP_ITEM_ORDER = {
   bricks: ["pentaball", "explosive", "multiball"],
-  powerups: ["snipe", "paddle"]
+  powerups: ["snipe", "paddle", "timeMachine"]
 };
 const CHEST_DROP_WEIGHTS = {
   bricks: { pentaball: 1, explosive: 5, multiball: 30 },
-  powerups: { snipe: 19, paddle: 10 }
+  powerups: { snipe: 19, paddle: 10, timeMachine: 1 }
 };
 let activeShopTab = "bricks";
 const ITEM_DEFS = Object.freeze({
@@ -121,14 +126,24 @@ const ITEM_DEFS = Object.freeze({
     description: "Makes your paddle 50% longer for the next round.",
     rarity: 3,
     sellPrice: 400
+  },
+  timeMachine: {
+    name: "Time Machine",
+    previewClass: "time-machine-brick-preview",
+    previewText: "",
+    description: "Adds a pickup that slows everything except the paddle for 5 seconds.",
+    rarity: 1,
+    sellPrice: 1500
   }
 });
-const RUN_POWERUP_CHOICES = ["snipe", "paddle"];
-let activeRunPowerups = { snipe: false, paddle: false };
+const TIME_MACHINE_ICON_MARKUP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-2 3-2 3 0 0 4-6 4-6 0 0-5 9-7 12-2 3 6-1 13-7 14" fill="none" stroke="#5b2677" stroke-linecap="round" stroke-width="2.5"/></svg>';
+const RUN_POWERUP_CHOICES = ["snipe", "paddle", "timeMachine"];
+let activeRunPowerups = { snipe: false, paddle: false, timeMachine: false };
 
 function getShopItemOrder(category = activeShopTab) {
   return [...SHOP_ITEM_ORDER[category]].sort((first, second) => (
-    ITEM_DEFS[first].rarity - ITEM_DEFS[second].rarity
+    ITEM_DEFS[second].rarity - ITEM_DEFS[first].rarity ||
+    CHEST_DROP_WEIGHTS[category][second] - CHEST_DROP_WEIGHTS[category][first]
   ));
 }
 
@@ -171,7 +186,12 @@ function createDefaultStats(initialCredits = 0) {
 }
 
 function createDefaultItemInventory() {
-  return Object.fromEntries(ITEM_ORDER.map((itemKey) => [itemKey, { count: 0, equipped: false }]));
+  return Object.fromEntries(ITEM_ORDER.map((itemKey) => [
+    itemKey,
+    itemKey === "multiball" ? { count: 1, equipped: true }
+      : itemKey === "paddle" ? { count: 1, equipped: true }
+        : { count: 0, equipped: false }
+  ]));
 }
 
 let itemInventory = createDefaultItemInventory();
@@ -182,7 +202,6 @@ GameState.credits = savedShopProgress.credits;
 itemInventory = savedShopProgress.itemInventory;
 adminUnlocked = savedShopProgress.adminUnlocked;
 const GameStats = savedShopProgress.stats;
-updateAdminVisibility();
 adminBrickSelect.innerHTML = BRICK_ITEM_ORDER.map((itemKey) => (
   `<option value="${itemKey}">${ITEM_DEFS[itemKey].name}</option>`
 )).join("");
@@ -276,7 +295,11 @@ let creditsEarnedThisLevel = 0;
 let levelTransition = false;
 let levelTransitionFrame = 0;
 let levelComplete = false;
+let levelCompleteFadeFrame = 0;
 let gameWon = false;
+let roundRewardRevealTimeout = null;
+let timeMachineSlowUntil = 0;
+let timeMachineSlowTick = false;
 let paddleSlowed = false;
 let paddleSlowUntil = 0;
 let paddleBoostUntil = 0;
@@ -287,6 +310,7 @@ let shopOpen = false;
 let settingsOpen = false;
 let statsOpen = false;
 let equippedBrickOriginals = new Map();
+updateAdminVisibility();
 
 
 // ------------------------------------------------------------
@@ -323,6 +347,7 @@ document.addEventListener("keydown", function (event) {
       resetGame();
     }
     deathScreen = false;
+    updateAdminVisibility();
   }
   if (event.code === "Space") {
     event.preventDefault();
@@ -350,13 +375,17 @@ startGameButton.addEventListener("click", function () {
 
 openMainMenuButton.addEventListener("click", openMainMenu);
 skipLevelButton.addEventListener("click", function () {
-  if (!adminUnlocked || !gameStarted || level >= 10) {
+  if (!adminUnlocked || !gameStarted || deathScreen || levelTransition || levelComplete || level >= 10) {
     return;
   }
-  deathScreen = false;
-  levelComplete = false;
-  roundReward.hidden = true;
-  beginLevel(level + 1);
+  levelComplete = true;
+  levelCompleteFadeFrame = 0;
+  resetPaddleSlow();
+  activeRunPowerups.paddle = false;
+  targetPaddleWidth = PADDLE_BASE_WIDTH;
+  resetBall();
+  updateAdminVisibility();
+  showRoundReward();
 });
 openShopButton.addEventListener("click", openShop);
 openSettingsButton.addEventListener("click", openSettings);
@@ -383,6 +412,9 @@ roundRewardOptions.addEventListener("click", (event) => {
   if (button) {
     chooseRunPowerup(button.dataset.runPowerup);
   }
+});
+roundRewardOptions.addEventListener("pointermove", () => {
+  roundRewardOptions.classList.remove("ignore-hover");
 });
 finishRunButton.addEventListener("click", function () {
   roundReward.hidden = true;
@@ -411,6 +443,7 @@ startMenu.addEventListener("animationend", function (event) {
     return;
   }
   gameStarted = true;
+  updateAdminVisibility();
   levelCodeBar.classList.add("is-playing");
   startMenu.hidden = true;
   startMenu.classList.remove("is-starting");
@@ -439,6 +472,7 @@ levelCodeInput.addEventListener("cut", function (event) {
 function updateAdminVisibility() {
   adminTools.hidden = !adminUnlocked;
   skipLevelButton.hidden = !adminUnlocked;
+  skipLevelButton.disabled = !gameStarted || deathScreen || levelTransition || levelComplete || level >= 10;
 }
 
 levelCodeForm.addEventListener("submit", function (event) {
@@ -504,6 +538,21 @@ function update() {
   if (shopOpen || settingsOpen || statsOpen) {
     return;
   }
+  if (performance.now() < timeMachineSlowUntil) {
+    timeMachineSlowTick = !timeMachineSlowTick;
+    if (timeMachineSlowTick) {
+      if (gameStarted) {
+        updatePaddleResize();
+        if (!deathScreen && !levelComplete && !levelTransition) {
+          movePaddle();
+        }
+        updatePaddleTrail();
+      }
+      return;
+    }
+  } else {
+    timeMachineSlowTick = false;
+  }
   if (paddleSlowed && performance.now() >= paddleSlowUntil) {
     resetPaddleSlow();
   }
@@ -530,6 +579,9 @@ function update() {
   }
   updatePaddleResize();
   if (deathScreen || levelComplete) {
+    if (levelComplete) {
+      levelCompleteFadeFrame = Math.min(LEVEL_COMPLETE_FADE_FRAMES, levelCompleteFadeFrame + 1);
+    }
     updateBackgroundHazards();
     return;
   }
@@ -579,15 +631,18 @@ function update() {
     }
     resetBall();
     deathScreen = true;
+    updateAdminVisibility();
   }
 
   if (!deathScreen && bricks.length === 0) {
     creditsEarnedThisLevel = awardRoundCredits();
     levelComplete = true;
+    levelCompleteFadeFrame = 0;
     resetPaddleSlow();
     activeRunPowerups.paddle = false;
     targetPaddleWidth = PADDLE_BASE_WIDTH;
     resetBall();
+    updateAdminVisibility();
     showRoundReward();
   }
 }
@@ -647,6 +702,8 @@ function activatePaddleBoost() {
 }
 
 function resetGame() {
+  clearTimeout(roundRewardRevealTimeout);
+  roundRewardRevealTimeout = null;
   clearRunPowerups();
   level = 1;
   bricks = makeBricksForRound(level);
@@ -676,7 +733,9 @@ function resetGame() {
   deathScreen = false;
   levelTransition = false;
   levelComplete = false;
+  levelCompleteFadeFrame = 0;
   gameWon = false;
+  updateAdminVisibility();
   roundReward.hidden = true;
   paddleBoostUntil = 0;
   paddleBoostCooldownUntil = 0;
@@ -706,6 +765,7 @@ function beginLevel(nextLevel) {
   }
   levelTransition = true;
   levelTransitionFrame = 0;
+  updateAdminVisibility();
   fallingPowerups = [];
   fallingSpikes = [];
   snipeBeams = [];
@@ -719,11 +779,14 @@ function nextRound() {
 }
 
 function chooseRunPowerup(powerup) {
-  if (!levelComplete || gameWon || !RUN_POWERUP_CHOICES.includes(powerup)) {
+  if (!levelComplete || gameWon || !RUN_POWERUP_CHOICES.includes(powerup) || itemInventory[powerup].count === 0) {
     return;
   }
   if (powerup === "snipe") {
     activeRunPowerups.snipe = true;
+    snipeAmmo += 1;
+  } else if (powerup === "timeMachine") {
+    activeRunPowerups.timeMachine = true;
   } else {
     activeRunPowerups.paddle = true;
   }
@@ -731,8 +794,10 @@ function chooseRunPowerup(powerup) {
 }
 
 function clearRunPowerups() {
-  activeRunPowerups = { snipe: false, paddle: false };
+  activeRunPowerups = { snipe: false, paddle: false, timeMachine: false };
   snipeAmmo = 0;
+  timeMachineSlowUntil = 0;
+  timeMachineSlowTick = false;
   targetPaddleWidth = PADDLE_BASE_WIDTH;
   if (typeof paddle !== "undefined") {
     paddle.width = PADDLE_BASE_WIDTH;
@@ -741,12 +806,19 @@ function clearRunPowerups() {
 }
 
 function showRoundReward() {
-  roundReward.hidden = false;
+  clearTimeout(roundRewardRevealTimeout);
+  roundRewardRevealTimeout = null;
+  roundReward.classList.remove("is-revealing");
+  roundReward.hidden = true;
+  roundRewardRoundTitle.hidden = false;
   roundRewardOptions.hidden = gameWon;
   roundRewardActions.hidden = !gameWon;
+  roundRewardShopHint.hidden = gameWon;
 
   if (level === 10) {
     gameWon = true;
+    roundRewardRoundTitle.hidden = true;
+    roundRewardShopHint.hidden = true;
     const finalReward = 1000;
     addCredits(finalReward);
     creditsEarnedThisLevel += finalReward;
@@ -756,15 +828,43 @@ function showRoundReward() {
     roundRewardDetails.textContent = `Level 10 complete! +${creditsEarnedThisLevel} credits total, including the +${finalReward} bonus.`;
     roundRewardOptions.hidden = true;
     roundRewardActions.hidden = false;
-    finishRunButton.focus();
+    scheduleRoundRewardReveal();
     return;
   }
 
-  roundRewardTitle.textContent = "Pick a powerup for next level";
+  roundRewardRoundTitle.hidden = false;
+  roundRewardRoundTitle.textContent = `Round ${level} completed`;
+  roundRewardTitle.textContent = "Pick a power up";
   roundRewardDetails.textContent = `Credits: +${creditsEarnedThisLevel}`;
+  updateRoundRewardChoices();
   roundRewardOptions.hidden = false;
   roundRewardActions.hidden = true;
-  roundRewardOptions.querySelector("[data-run-powerup='snipe']").focus();
+  scheduleRoundRewardReveal();
+}
+
+function scheduleRoundRewardReveal() {
+  roundRewardRevealTimeout = setTimeout(() => {
+    roundRewardRevealTimeout = null;
+    if (!levelComplete) {
+      return;
+    }
+    if (!gameWon) {
+      roundRewardOptions.classList.add("ignore-hover");
+    }
+    roundReward.hidden = false;
+    roundReward.classList.add("is-revealing");
+    if (gameWon) {
+      finishRunButton.focus();
+    } else {
+      roundRewardOptions.querySelector("[data-run-powerup]:not([hidden])").focus();
+    }
+  }, ROUND_REWARD_REVEAL_DELAY);
+}
+
+function updateRoundRewardChoices() {
+  for (const button of roundRewardOptions.querySelectorAll("[data-run-powerup]")) {
+    button.hidden = itemInventory[button.dataset.runPowerup].count === 0;
+  }
 }
 
 function updateLevelTransition() {
@@ -786,6 +886,7 @@ function updateLevelTransition() {
 
   if (levelTransitionFrame >= dropFrames + riseFrames) {
     levelTransition = false;
+    updateAdminVisibility();
     for (const brick of bricks) {
       brick.y = brick.targetY;
     }
@@ -903,7 +1004,7 @@ function startComboReward(amount) {
     amount,
     startX,
     startY,
-    waitFrames: 30,
+    waitFrames: 60,
     travelFrames: 0,
     arrived: false
   });
@@ -948,6 +1049,9 @@ function updateFallingPowerups() {
         GameState.lives += 1;
       } else if (powerup.type === "snipe") {
         snipeAmmo += 1;
+      } else if (powerup.type === "timeMachine") {
+        timeMachineSlowUntil = performance.now() + TIME_MACHINE_DURATION;
+        timeMachineSlowTick = false;
       }
       fallingPowerups.splice(index, 1);
     } else if (powerup.y > HEIGHT) {
@@ -1053,7 +1157,8 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
     brick.special === "multiball" ||
     brick.special === "pentaball" ||
     brick.special === "heart" ||
-    brick.special === "snipe"
+    brick.special === "snipe" ||
+    brick.special === "timeMachine"
   ) {
     const powerupWidth = brick.special === "snipe" ? 34 : 20;
     fallingPowerups.push({
@@ -1438,6 +1543,16 @@ function drawHud() {
     ctx.restore();
   }
 
+  if (performance.now() < timeMachineSlowUntil) {
+    ctx.save();
+    ctx.fillStyle = POWERUP_STYLES.timeMachine.color;
+    ctx.font = "14px 'Fredoka One', cursive";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`TIME SLOWED · ${Math.ceil((timeMachineSlowUntil - performance.now()) / 1000)}s`, WIDTH / 2, 8);
+    ctx.restore();
+  }
+
   ctx.font = "18px 'Fredoka One', cursive";
   ctx.textBaseline = "top";
   const heartWidth = 22;
@@ -1508,6 +1623,10 @@ function drawFallingPowerups() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("AMMO", centerX, centerY);
+    } else if (powerup.type === "timeMachine") {
+      ctx.fillStyle = POWERUP_STYLES.timeMachine.color;
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      drawTimeMachineSpiral(ctx, centerX, centerY, 7, POWERUP_STYLES.timeMachine.darkerColor);
     } else {
       ctx.fillStyle = "#46b5dc";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -1535,6 +1654,28 @@ function drawMultiballIcon(drawContext, centerX, centerY, radius, color) {
     drawContext.arc(centerX + offsetX, centerY + offsetY, radius * 0.65, 0, Math.PI * 2);
     drawContext.fill();
   }
+  drawContext.restore();
+}
+
+function drawTimeMachineSpiral(drawContext, centerX, centerY, radius, color) {
+  drawContext.save();
+  drawContext.strokeStyle = color;
+  drawContext.lineWidth = Math.max(1.25, radius * 0.22);
+  drawContext.lineCap = "round";
+  drawContext.beginPath();
+  for (let point = 0; point <= 48; point++) {
+    const progress = point / 48;
+    const angle = progress * Math.PI * 4;
+    const pointRadius = progress * radius;
+    const x = centerX + Math.cos(angle) * pointRadius;
+    const y = centerY + Math.sin(angle) * pointRadius;
+    if (point === 0) {
+      drawContext.moveTo(x, y);
+    } else {
+      drawContext.lineTo(x, y);
+    }
+  }
+  drawContext.stroke();
   drawContext.restore();
 }
 
@@ -1619,7 +1760,7 @@ function drawDeathScreen() {
 }
 
 function drawLevelComplete() {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * levelCompleteFadeFrame / LEVEL_COMPLETE_FADE_FRAMES})`;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 }
 
@@ -1699,6 +1840,14 @@ function loadShopProgress() {
       itemInventoryState[itemKey].count = Math.max(0, savedCount || (savedOwned ? 1 : 0));
       itemInventoryState[itemKey].equipped = (savedItem.equipped === true || legacyEquipped === true) && itemInventoryState[itemKey].count > 0;
     }
+    if (itemInventoryState.multiball.count === 0) {
+      itemInventoryState.multiball.count = 1;
+      itemInventoryState.multiball.equipped = true;
+    }
+    if (itemInventoryState.paddle.count === 0) {
+      itemInventoryState.paddle.count = 1;
+      itemInventoryState.paddle.equipped = true;
+    }
 
     for (const key of ["highestCombo", "mostMoney", "totalMoney", "chestsOpened", "highestLevel"]) {
       if (Number.isSafeInteger(savedStats[key]) && savedStats[key] >= (key === "highestLevel" ? 1 : 0)) {
@@ -1758,6 +1907,7 @@ function updateShopDisplay() {
     const owned = itemState.count > 0;
     const equipped = itemState.equipped;
     const previewText = owned ? item.previewText : "?";
+    const previewContent = owned && itemKey === "timeMachine" ? TIME_MACHINE_ICON_MARKUP : previewText;
     const rarityLabel = `${getChestDropChance(itemKey)}%`;
     const nameLabel = owned ? item.name : "???";
     const descriptionText = owned ? item.description : "???";
@@ -1767,7 +1917,7 @@ function updateShopDisplay() {
       <div class="shop-item ${owned ? "" : "mystery-item"}">
         <h3>${nameLabel}</h3>
         <div class="shop-item-content">
-          <span class="${owned ? item.previewClass : "mystery-preview"}" aria-label="${owned ? item.name : "Mystery item"} preview">${previewText}</span>
+          <span class="${owned ? item.previewClass : "mystery-preview"}" aria-label="${owned ? item.name : "Mystery item"} preview">${previewContent}</span>
           <div class="shop-copy">
             <span class="rarity-pill rarity-${item.rarity}">${rarityLabel}</span>
             <p>${descriptionText}</p>
@@ -1803,22 +1953,23 @@ function addCredits(amount) {
 
 function formatCredits(credits) {
   const units = [
+    { value: 1_000_000_000_000_000, suffix: "Q" },
+    { value: 1_000_000_000_000, suffix: "t" },
     { value: 1_000_000_000, suffix: "b" },
     { value: 1_000_000, suffix: "m" },
     { value: 1_000, suffix: "k" }
   ];
-  const unit = units.find(({ value }) => credits >= value);
-  if (!unit) {
+  let unitIndex = units.findIndex(({ value }) => credits >= value);
+  if (unitIndex === -1) {
     return String(credits);
   }
+  let unit = units[unitIndex];
   let roundedValue = Math.round(credits / unit.value * 10) / 10;
-  let suffix = unit.suffix;
-  if (roundedValue >= 1_000 && unit.suffix !== "b") {
-    const nextUnit = units[units.indexOf(unit) - 1];
-    roundedValue = Math.round(credits / nextUnit.value * 10) / 10;
-    suffix = nextUnit.suffix;
+  if (roundedValue >= 1_000 && unitIndex > 0) {
+    unit = units[unitIndex - 1];
+    roundedValue = Math.round(credits / unit.value * 10) / 10;
   }
-  return `${roundedValue.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+  return `${roundedValue.toFixed(1).replace(/\.0$/, "")}${unit.suffix}`;
 }
 
 function makeBricksForRound(roundLevel) {
@@ -1827,6 +1978,9 @@ function makeBricksForRound(roundLevel) {
   if (activeRunPowerups.snipe) {
     const sniperAmmoBrickCount = Math.floor(Math.random() * 3) + 1;
     addEquippedBricks(roundBricks, "snipe", sniperAmmoBrickCount);
+  }
+  if (activeRunPowerups.timeMachine) {
+    addEquippedBricks(roundBricks, "timeMachine");
   }
   if (itemInventory.multiball.equipped) {
     const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
@@ -2091,6 +2245,8 @@ function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
     revealCtx.fill();
   } else if (itemKey === "paddle") {
     drawPaddleArrowIcon(revealCtx, centerX, centerY, width * 0.84, height * 0.8, style.darkerColor);
+  } else if (itemKey === "timeMachine") {
+    drawTimeMachineSpiral(revealCtx, centerX, centerY, height * 0.36, style.darkerColor);
   } else {
     revealCtx.font = "13px 'Fredoka One', cursive";
     revealCtx.textAlign = "center";
@@ -2252,6 +2408,7 @@ function openMainMenu() {
   startMenu.classList.add("is-opening");
   gameBoard.classList.add("menu-dismissing");
   gameTitle.classList.remove("is-started");
+  updateAdminVisibility();
   startGameButton.focus({ preventScroll: true });
 }
 
@@ -2274,7 +2431,7 @@ function toggleItemEquipment(itemKey) {
   const nextEquipped = !itemState.equipped;
   itemState.equipped = nextEquipped;
 
-  if (nextEquipped && (itemKey === "snipe" || itemKey === "paddle")) {
+  if (itemKey === "snipe" || itemKey === "paddle" || itemKey === "timeMachine") {
     updateShopDisplay();
     persistShopProgress();
     return;

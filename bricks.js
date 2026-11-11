@@ -19,7 +19,8 @@ const POWERUP_STYLES = {
   spike: { color: "#ef4545", darkerColor: "#842626" },
   snipe: { color: "#46b5dc", darkerColor: "#245d78" },
   explosive: { color: "#ffad33", darkerColor: "#a82f0d" },
-  paddle: { color: "#a66bff", darkerColor: "#57318c" }
+  paddle: { color: "#a66bff", darkerColor: "#57318c" },
+  timeMachine: { color: "#bd68ed", darkerColor: "#5b2677" }
 };
 
 function stayStill() {}
@@ -183,6 +184,8 @@ function drawBricks() {
         ctx.restore();
       } else if (brick.special === "paddle") {
         drawPaddleArrowIcon(ctx, centerX, centerY, 46, 24, brick.darkerColor);
+      } else if (brick.special === "timeMachine") {
+        drawTimeMachineSpiral(ctx, centerX, centerY, 9, brick.darkerColor);
       } else {
         ctx.font = "12px 'Fredoka One', cursive";
         ctx.textAlign = "center";
