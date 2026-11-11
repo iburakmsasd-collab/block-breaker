@@ -158,13 +158,24 @@ canvas {
   flex: 0 0 auto;
 }
 
-.contains-row {
+.shop-tabs {
+  display: grid;
   flex: 0 0 auto;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.9;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shop-menu .shop-tabs .shop-tab {
+  padding: 8px 12px;
+  border: 1px solid #fff;
+  background: #171717;
+  color: #fff;
+  font-size: 16px;
+}
+
+.shop-menu .shop-tabs .shop-tab.is-active {
+  background: #fff;
+  color: #000;
 }
 
 .chest-reveal {
@@ -180,6 +191,10 @@ canvas {
 
 .chest-reveal[hidden] {
   display: none;
+}
+
+.chest-reveal.is-spinning {
+  cursor: wait;
 }
 
 #chest-reveal-canvas {
@@ -256,7 +271,17 @@ canvas {
 }
 
 #settings-menu {
+  min-height: 0;
+}
+
+.settings-content {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .admin-tools {
@@ -496,10 +521,13 @@ canvas {
   align-items: center;
   justify-content: center;
   transform: translateY(-50%);
-  background: #35d06f;
-  color: #176b3a;
-  font-size: 24px;
-  font-weight: bold;
+  background-color: #35d06f;
+  background-image:
+    radial-gradient(circle, #176b3a 0 4px, transparent 4.5px),
+    radial-gradient(circle, #176b3a 0 4px, transparent 4.5px),
+    radial-gradient(circle, #176b3a 0 4px, transparent 4.5px);
+  background-position: 50% 28%, 42% 70%, 58% 70%;
+  background-repeat: no-repeat;
 }
 
 .pentaball-brick-preview {
@@ -590,6 +618,38 @@ canvas {
   content: "";
 }
 
+.paddle-brick-preview {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  display: inline-flex;
+  width: 82px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  background: #a66bff;
+}
+
+.paddle-brick-preview::before {
+  width: 52px;
+  height: 28px;
+  background: #57318c;
+  clip-path: polygon(
+    0 50%,
+    24% 0,
+    24% 30%,
+    76% 30%,
+    76% 0,
+    100% 50%,
+    76% 100%,
+    76% 70%,
+    24% 70%,
+    24% 100%
+  );
+  content: "";
+}
+
 .shop-item h3 {
   margin: 0;
   font-size: 19px;
@@ -612,6 +672,158 @@ canvas {
   align-self: center;
   width: 228px;
   min-height: 50px;
+}
+
+.round-reward {
+  position: absolute;
+  inset: 12%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 22px;
+  overflow-y: auto;
+  border: 2px solid #fff;
+  background: rgba(0, 0, 0, 0.97);
+  text-align: center;
+}
+
+.round-reward[hidden] {
+  display: none;
+}
+
+.round-reward [hidden] {
+  display: none;
+}
+
+.round-reward h2,
+.round-reward p {
+  margin: 0;
+}
+
+.round-reward h2 {
+  font-size: clamp(22px, 4vw, 32px);
+}
+
+.round-reward p {
+  line-height: 1.4;
+}
+
+.round-reward-options {
+  display: grid;
+  grid-template-columns: repeat(2, clamp(110px, 26vw, 180px));
+  grid-auto-rows: clamp(110px, 26vw, 180px);
+  justify-content: center;
+  gap: 16px;
+}
+
+.round-reward .powerup-choice {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid #fff;
+  background: #000;
+  color: #fff;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+  transition: transform 220ms ease, box-shadow 320ms ease;
+}
+
+.powerup-choice-icon {
+  position: relative;
+  top: auto;
+  left: auto;
+  display: flex;
+  width: min(38%, 82px);
+  height: auto;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+}
+
+.powerup-choice-icon.sniper-brick-preview {
+  font-size: clamp(9px, 2vw, 13px);
+}
+
+.powerup-choice-icon.paddle-brick-preview::before {
+  width: 72%;
+  height: 72%;
+}
+
+.powerup-choice-name {
+  font-size: clamp(16px, 3vw, 22px);
+}
+
+.powerup-choice-description {
+  max-width: 24ch;
+  font-size: clamp(12px, 2vw, 15px);
+  line-height: 1.35;
+}
+
+.round-reward .powerup-choice:hover,
+.round-reward .powerup-choice:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 0 42px rgba(255, 255, 255, 0.65);
+}
+
+.round-reward-actions {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  gap: 16px;
+}
+
+.round-reward-actions[hidden] {
+  display: none;
+}
+
+.round-reward #finish-run,
+.round-reward #return-to-menu {
+  min-width: 180px;
+  min-height: 64px;
+  padding: 14px 24px;
+  background: #000;
+  color: #fff;
+  font-size: 22px;
+}
+
+.round-reward #finish-run {
+  min-width: 240px;
+  min-height: 76px;
+  font-size: 26px;
+}
+
+@media (max-width: 560px) {
+  .round-reward-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .round-reward #finish-run,
+  .round-reward #return-to-menu {
+    width: min(100%, 280px);
+    min-width: 0;
+  }
+}
+
+.round-reward #finish-run:hover,
+.round-reward #finish-run:focus-visible,
+.round-reward #return-to-menu:hover,
+.round-reward #return-to-menu:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 0 42px rgba(255, 255, 255, 0.65);
 }
 
 .game-title {

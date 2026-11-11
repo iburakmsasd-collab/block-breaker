@@ -18,34 +18,56 @@ const POWERUP_STYLES = {
   heart: { color: "#f05a70", darkerColor: "#8d1c30" },
   spike: { color: "#ef4545", darkerColor: "#842626" },
   snipe: { color: "#46b5dc", darkerColor: "#245d78" },
-  explosive: { color: "#ffad33", darkerColor: "#a82f0d" }
+  explosive: { color: "#ffad33", darkerColor: "#a82f0d" },
+  paddle: { color: "#a66bff", darkerColor: "#57318c" }
 };
 
 function stayStill() {}
+
+function getLevelBrickLayout(level) {
+  const rows = level <= 3 ? BRICK_ROWS : level <= 6 ? BRICK_ROWS + 1 : level <= 9 ? BRICK_ROWS + 2 : BRICK_ROWS + 3;
+  const spikeRanges = {
+    2: [1, 4],
+    3: [2, 5],
+    4: [2, 6],
+    5: [2, 6],
+    6: [3, 7],
+    7: [4, 7],
+    8: [5, 8],
+    9: [5, 5],
+    10: [10, 10]
+  };
+  const [minimumSpikes, maximumSpikes] = spikeRanges[level] || [0, 0];
+  const spikeCount = minimumSpikes + Math.floor(Math.random() * (maximumSpikes - minimumSpikes + 1));
+  const heartCount = level < 2 ? 0 : level === 9
+    ? (Math.random() < 0.5 ? 2 : 4)
+    : level >= 5 ? 2 : 1;
+  return { rows, spikeCount, heartCount };
+}
 
 // Builds the list of bricks. Each brick is an object with an
 // x, y, width, and height.
 function makeBricks(level = 1) {
   const list = [];
   const specialIndexes = new Map();
-  if (level >= 2) {
-    const spikeCount = Math.floor(Math.random() * 4) + 1;
-    while (specialIndexes.size < spikeCount) {
-      const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
-      if (!specialIndexes.has(index)) {
-        specialIndexes.set(index, "spike");
-      }
+  const layout = getLevelBrickLayout(level);
+  const totalBricks = BRICK_COLUMNS * layout.rows;
+  while ([...specialIndexes.values()].filter((special) => special === "spike").length < layout.spikeCount) {
+    const index = Math.floor(Math.random() * totalBricks);
+    if (!specialIndexes.has(index)) {
+      specialIndexes.set(index, "spike");
     }
-    let heartIndex;
-    do {
-      heartIndex = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
-    } while (specialIndexes.has(heartIndex));
-    specialIndexes.set(heartIndex, "heart");
+  }
+  while ([...specialIndexes.values()].filter((special) => special === "heart").length < layout.heartCount) {
+    const index = Math.floor(Math.random() * totalBricks);
+    if (!specialIndexes.has(index)) {
+      specialIndexes.set(index, "heart");
+    }
   }
   const twoHitIndexes = new Set();
   const twoHitCount = level === 1 ? 0 : 8;
   while (twoHitIndexes.size < twoHitCount) {
-    const index = Math.floor(Math.random() * BRICK_COLUMNS * BRICK_ROWS);
+    const index = Math.floor(Math.random() * totalBricks);
     if (!specialIndexes.has(index)) {
       twoHitIndexes.add(index);
     }
@@ -55,7 +77,7 @@ function makeBricks(level = 1) {
   const totalWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_GAP;
   const left = (WIDTH - totalWidth) / 2;
 
-  for (let row = 0; row < BRICK_ROWS; row++) {
+  for (let row = 0; row < layout.rows; row++) {
     for (let col = 0; col < BRICK_COLUMNS; col++) {
       const hue = Math.floor(Math.random() * 360);
       const index = row * BRICK_COLUMNS + col;
@@ -119,9 +141,7 @@ function drawBricks() {
       const centerY = brick.y + brick.height / 2;
       ctx.fillStyle = brick.darkerColor;
       if (brick.special === "multiball") {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
-        ctx.fill();
+        drawMultiballIcon(ctx, centerX, centerY, 5);
       } else if (brick.special === "pentaball") {
         ctx.font = "11px 'Fredoka One', cursive";
         ctx.textAlign = "center";
@@ -161,11 +181,13 @@ function drawBricks() {
         ctx.arc(0, 0, 3, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+      } else if (brick.special === "paddle") {
+        drawPaddleArrowIcon(ctx, centerX, centerY, 46, 24, brick.darkerColor);
       } else {
-        ctx.font = "14px 'Fredoka One', cursive";
+        ctx.font = "12px 'Fredoka One', cursive";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("SNIPE", centerX, centerY);
+        ctx.fillText("AMMO", centerX, centerY);
       }
     }
 

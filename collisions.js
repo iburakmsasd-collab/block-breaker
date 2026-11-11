@@ -23,14 +23,17 @@ function bounceOffWalls(ball) {
   if (ball.x < 0) {
     ball.x = 0;
     ball.vx = -ball.vx;
+    GameAudio.play("wall");
   }
   if (ball.x + ball.width > WIDTH) {
     ball.x = WIDTH - ball.width;
     ball.vx = -ball.vx;
+    GameAudio.play("wall");
   }
   if (ball.y < 0) {
     ball.y = 0;
     ball.vy = Math.abs(ball.vy);
+    GameAudio.play("wall");
   }
 }
 
@@ -40,6 +43,7 @@ function bounceOffWalls(ball) {
 // when it is falling onto the paddle.
 function bounceOffPaddle(ball) {
   if (boxesTouch(ball, paddle) && ball.vy > 0) {
+    GameAudio.play("paddle");
     ball.y = paddle.y - ball.height;  // sit on top of the paddle
     ball.squish = BALL_SQUISH_FRAMES;
     paddleHitFlashFrames = 8;
@@ -142,6 +146,7 @@ function damageBrick(brick) {
   }
 
   brick.hitstillbroken -= 1;
+  GameAudio.play("brickHit", brick.hitstillbroken);
   brick.hitFlashFrames = BRICK_HIT_FLASH_FRAMES;
 
   if (brick.hitstillbroken <= 0) {

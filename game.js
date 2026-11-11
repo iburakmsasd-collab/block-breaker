@@ -24,7 +24,10 @@ const closeShopButton = document.getElementById("close-shop");
 const closeSettingsButton = document.getElementById("close-settings");
 const closeStatsButton = document.getElementById("close-stats");
 const resetCreditsButton = document.getElementById("reset-credits");
+const soundToggle = document.getElementById("sound-toggle");
 const openChestButton = document.getElementById("open-chest");
+const bricksShopTab = document.getElementById("bricks-shop-tab");
+const powerupsShopTab = document.getElementById("powerups-shop-tab");
 const shopMenu = document.getElementById("shop-menu");
 const settingsMenu = document.getElementById("settings-menu");
 const statsMenu = document.getElementById("stats-menu");
@@ -37,6 +40,8 @@ const adminStatus = document.getElementById("admin-status");
 const shopList = document.getElementById("shop-list");
 const chestReveal = document.getElementById("chest-reveal");
 const chestRevealCanvas = document.getElementById("chest-reveal-canvas");
+let activeChestReveal = null;
+let chestRevealAnimationFrame = 0;
 const creditBalance = document.getElementById("credit-balance");
 const statHighestCombo = document.getElementById("stat-highest-combo");
 const statMostMoney = document.getElementById("stat-most-money");
@@ -46,6 +51,13 @@ const statHighestLevel = document.getElementById("stat-highest-level");
 const gameTitle = document.getElementById("game-title");
 const menuCanvas = document.getElementById("menu-canvas");
 const menuCtx = menuCanvas.getContext("2d");
+const roundReward = document.getElementById("round-reward");
+const roundRewardTitle = document.getElementById("round-reward-title");
+const roundRewardDetails = document.getElementById("round-reward-details");
+const roundRewardOptions = document.getElementById("round-reward-options");
+const finishRunButton = document.getElementById("finish-run");
+const returnToMenuButton = document.getElementById("return-to-menu");
+const roundRewardActions = document.querySelector(".round-reward-actions");
 
 const WIDTH = 600;
 const HEIGHT = 450;
@@ -53,8 +65,22 @@ ctx.scale(canvas.width / WIDTH, canvas.height / HEIGHT);
 const PADDLE_TRAIL_LENGTH = 10;
 const PADDLE_TRAIL_LIFE = 12;
 const CHEST_COST = 250;
+const CHEST_ROLL_DURATION = 4000;
+const PADDLE_BASE_WIDTH = 90;
+const PADDLE_WIDE_WIDTH = 135;
+const PADDLE_RESIZE_RATE = 0.18;
 const SHOP_STORAGE_KEY = "block-breaker-shop";
-const ITEM_ORDER = ["heart", "multiball", "snipe", "explosive", "pentaball"];
+const ITEM_ORDER = ["multiball", "snipe", "explosive", "pentaball", "paddle"];
+const BRICK_ITEM_ORDER = ["multiball", "explosive", "pentaball"];
+const SHOP_ITEM_ORDER = {
+  bricks: ["pentaball", "explosive", "multiball"],
+  powerups: ["snipe", "paddle"]
+};
+const CHEST_DROP_WEIGHTS = {
+  bricks: { pentaball: 1, explosive: 5, multiball: 30 },
+  powerups: { snipe: 19, paddle: 10 }
+};
+let activeShopTab = "bricks";
 const ITEM_DEFS = Object.freeze({
   pentaball: {
     name: "Pentaball Brick",
@@ -62,7 +88,6 @@ const ITEM_DEFS = Object.freeze({
     previewText: "PENTA",
     description: "Launches 10 extra balls from the paddle.",
     rarity: 1,
-    dropChance: 1,
     sellPrice: 1200
   },
   explosive: {
@@ -71,58 +96,62 @@ const ITEM_DEFS = Object.freeze({
     previewText: "",
     description: "Explodes when broken, destroying 4-6 nearby bricks.",
     rarity: 2,
-    dropChance: 5,
     sellPrice: 600
   },
   snipe: {
-    name: "Sniper Brick",
+    name: "Sniper Powerup",
     previewClass: "sniper-brick-preview",
-    previewText: "SNIPE",
-    description: "Collect it for 1 sniper shot. Press Space to break a column of blocks.",
+    previewText: "AMMO",
+    description: "Adds 1–3 sniper shots. Press Space to break a column of blocks.",
     rarity: 3,
-    dropChance: 19,
     sellPrice: 500
   },
   multiball: {
     name: "Multiball Brick",
     previewClass: "multiball-brick-preview",
-    previewText: "●",
+    previewText: "",
     description: "Shoots 2 extra balls from the paddle.",
     rarity: 4,
-    dropChance: 30,
     sellPrice: 200
   },
-  heart: {
-    name: "Heal Brick",
-    previewClass: "heart-brick-preview",
+  paddle: {
+    name: "Paddle Powerup",
+    previewClass: "paddle-brick-preview",
     previewText: "",
-    description: "Adds 1 extra life when collected.",
-    rarity: 5,
-    dropChance: 45,
-    sellPrice: 100
+    description: "Makes your paddle 50% longer for the next round.",
+    rarity: 3,
+    sellPrice: 400
   }
 });
-const CHEST_DROP_WEIGHTS = Object.freeze({
-  pentaball: 1,
-  explosive: 5,
-  snipe: 19,
-  multiball: 30,
-  heart: 45
-});
+const RUN_POWERUP_CHOICES = ["snipe", "paddle"];
+let activeRunPowerups = { snipe: false, paddle: false };
 
-function rollChestItem() {
-  const totalWeight = Object.values(CHEST_DROP_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
+function getShopItemOrder(category = activeShopTab) {
+  return [...SHOP_ITEM_ORDER[category]].sort((first, second) => (
+    ITEM_DEFS[first].rarity - ITEM_DEFS[second].rarity
+  ));
+}
+
+function getChestDropChance(itemKey, category = activeShopTab) {
+  const weights = CHEST_DROP_WEIGHTS[category];
+  const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+  return Math.round(weights[itemKey] / totalWeight * 100);
+}
+
+function rollChestItem(category = activeShopTab) {
+  const weights = CHEST_DROP_WEIGHTS[category];
+  const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
   const roll = Math.random() * totalWeight;
   let runningTotal = 0;
 
-  for (const itemKey of ITEM_ORDER) {
-    runningTotal += CHEST_DROP_WEIGHTS[itemKey];
+  for (const itemKey of SHOP_ITEM_ORDER[category]) {
+    runningTotal += weights[itemKey];
     if (roll < runningTotal) {
       return itemKey;
     }
   }
 
-  return ITEM_ORDER[ITEM_ORDER.length - 1];
+  return SHOP_ITEM_ORDER[category][SHOP_ITEM_ORDER[category].length - 1];
 }
 
 const GameState = {
@@ -154,7 +183,7 @@ itemInventory = savedShopProgress.itemInventory;
 adminUnlocked = savedShopProgress.adminUnlocked;
 const GameStats = savedShopProgress.stats;
 updateAdminVisibility();
-adminBrickSelect.innerHTML = ITEM_ORDER.map((itemKey) => (
+adminBrickSelect.innerHTML = BRICK_ITEM_ORDER.map((itemKey) => (
   `<option value="${itemKey}">${ITEM_DEFS[itemKey].name}</option>`
 )).join("");
 updateShopDisplay();
@@ -214,11 +243,12 @@ function launchBall() {
 const paddle = {
   x: WIDTH / 2 - 45,
   y: HEIGHT - 30,
-  width: 90,
+  width: PADDLE_BASE_WIDTH,
   height: 8,
   speed: PADDLE_SPEED
 };
 let paddleTrail = [];
+let targetPaddleWidth = PADDLE_BASE_WIDTH;
 
 
 // ------------------------------------------------------------
@@ -246,6 +276,7 @@ let creditsEarnedThisLevel = 0;
 let levelTransition = false;
 let levelTransitionFrame = 0;
 let levelComplete = false;
+let gameWon = false;
 let paddleSlowed = false;
 let paddleSlowUntil = 0;
 let paddleBoostUntil = 0;
@@ -293,10 +324,6 @@ document.addEventListener("keydown", function (event) {
     }
     deathScreen = false;
   }
-  if (event.code === "Enter" && levelComplete) {
-    event.preventDefault();
-    nextRound();
-  }
   if (event.code === "Space") {
     event.preventDefault();
     if (!event.repeat) {
@@ -323,11 +350,12 @@ startGameButton.addEventListener("click", function () {
 
 openMainMenuButton.addEventListener("click", openMainMenu);
 skipLevelButton.addEventListener("click", function () {
-  if (!adminUnlocked || !gameStarted) {
+  if (!adminUnlocked || !gameStarted || level >= 10) {
     return;
   }
   deathScreen = false;
   levelComplete = false;
+  roundReward.hidden = true;
   beginLevel(level + 1);
 });
 openShopButton.addEventListener("click", openShop);
@@ -338,6 +366,37 @@ closeSettingsButton.addEventListener("click", closeSettings);
 closeStatsButton.addEventListener("click", closeStats);
 openChestButton.addEventListener("click", openChest);
 resetCreditsButton.addEventListener("click", resetCredits);
+document.querySelectorAll("[data-shop-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    activeShopTab = button.dataset.shopTab;
+    updateShopDisplay();
+  });
+});
+shopList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-item-key]");
+  if (button) {
+    toggleItemEquipment(button.dataset.itemKey);
+  }
+});
+roundRewardOptions.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-run-powerup]");
+  if (button) {
+    chooseRunPowerup(button.dataset.runPowerup);
+  }
+});
+finishRunButton.addEventListener("click", function () {
+  roundReward.hidden = true;
+  gameWon = false;
+  resetGame();
+  deathScreen = false;
+});
+returnToMenuButton.addEventListener("click", openMainMenu);
+soundToggle.addEventListener("click", function () {
+  const enabled = soundToggle.getAttribute("aria-pressed") !== "true";
+  soundToggle.setAttribute("aria-pressed", String(enabled));
+  soundToggle.textContent = enabled ? "On" : "Off";
+  GameAudio.setSoundEnabled(enabled);
+});
 
 startMenu.addEventListener("animationend", function (event) {
   if (event.target !== startMenu) {
@@ -414,7 +473,7 @@ adminMoneyForm.addEventListener("submit", function (event) {
 adminBrickForm.addEventListener("submit", function (event) {
   event.preventDefault();
   const itemKey = adminBrickSelect.value;
-  if (!adminUnlocked || !ITEM_ORDER.includes(itemKey)) {
+  if (!adminUnlocked || !BRICK_ITEM_ORDER.includes(itemKey)) {
     adminStatus.textContent = "Choose a valid brick.";
     return;
   }
@@ -469,6 +528,7 @@ function update() {
   if (!gameStarted) {
     return;
   }
+  updatePaddleResize();
   if (deathScreen || levelComplete) {
     updateBackgroundHazards();
     return;
@@ -514,15 +574,21 @@ function update() {
       });
     }
     GameState.lives = Math.max(0, GameState.lives - 1);
+    if (GameState.lives === 0) {
+      clearRunPowerups();
+    }
     resetBall();
     deathScreen = true;
   }
 
   if (!deathScreen && bricks.length === 0) {
     creditsEarnedThisLevel = awardRoundCredits();
-    resetPaddleSlow();
     levelComplete = true;
+    resetPaddleSlow();
+    activeRunPowerups.paddle = false;
+    targetPaddleWidth = PADDLE_BASE_WIDTH;
     resetBall();
+    showRoundReward();
   }
 }
 
@@ -581,6 +647,7 @@ function activatePaddleBoost() {
 }
 
 function resetGame() {
+  clearRunPowerups();
   level = 1;
   bricks = makeBricksForRound(level);
   particles = [];
@@ -609,15 +676,20 @@ function resetGame() {
   deathScreen = false;
   levelTransition = false;
   levelComplete = false;
+  gameWon = false;
+  roundReward.hidden = true;
   paddleBoostUntil = 0;
   paddleBoostCooldownUntil = 0;
   resetPaddleSlow();
+  targetPaddleWidth = PADDLE_BASE_WIDTH;
+  paddle.width = PADDLE_BASE_WIDTH;
   paddle.x = WIDTH / 2 - paddle.width / 2;
   resetBall();
 }
 
 function beginLevel(nextLevel) {
   level = nextLevel;
+  targetPaddleWidth = activeRunPowerups.paddle ? PADDLE_WIDE_WIDTH : PADDLE_BASE_WIDTH;
   if (level > GameStats.highestLevel) {
     GameStats.highestLevel = level;
     updateStatsDisplay();
@@ -625,7 +697,6 @@ function beginLevel(nextLevel) {
   }
   brickCombo = 0;
   lastComboDisplayValue = 0;
-  snipeAmmo = 0;
   resetPaddleSlow();
   bricks = makeBricksForRound(level);
   explosions = [];
@@ -643,7 +714,57 @@ function beginLevel(nextLevel) {
 
 function nextRound() {
   levelComplete = false;
+  roundReward.hidden = true;
   beginLevel(level + 1);
+}
+
+function chooseRunPowerup(powerup) {
+  if (!levelComplete || gameWon || !RUN_POWERUP_CHOICES.includes(powerup)) {
+    return;
+  }
+  if (powerup === "snipe") {
+    activeRunPowerups.snipe = true;
+  } else {
+    activeRunPowerups.paddle = true;
+  }
+  nextRound();
+}
+
+function clearRunPowerups() {
+  activeRunPowerups = { snipe: false, paddle: false };
+  snipeAmmo = 0;
+  targetPaddleWidth = PADDLE_BASE_WIDTH;
+  if (typeof paddle !== "undefined") {
+    paddle.width = PADDLE_BASE_WIDTH;
+    paddle.x = Math.min(paddle.x, WIDTH - paddle.width);
+  }
+}
+
+function showRoundReward() {
+  roundReward.hidden = false;
+  roundRewardOptions.hidden = gameWon;
+  roundRewardActions.hidden = !gameWon;
+
+  if (level === 10) {
+    gameWon = true;
+    const finalReward = 1000;
+    addCredits(finalReward);
+    creditsEarnedThisLevel += finalReward;
+    updateShopDisplay();
+    persistShopProgress();
+    roundRewardTitle.textContent = "You beat the game!";
+    roundRewardDetails.textContent = `Level 10 complete! +${creditsEarnedThisLevel} credits total, including the +${finalReward} bonus.`;
+    roundRewardOptions.hidden = true;
+    roundRewardActions.hidden = false;
+    finishRunButton.focus();
+    return;
+  }
+
+  roundRewardTitle.textContent = "Pick a powerup for next level";
+  roundRewardDetails.textContent = `Credits: +${creditsEarnedThisLevel}`;
+  roundRewardOptions.hidden = false;
+  roundRewardActions.hidden = true;
+  roundRewardOptions.querySelector("[data-run-powerup='snipe']").focus();
 }
 
 function updateLevelTransition() {
@@ -793,6 +914,7 @@ function updateFallingPowerups() {
     const powerup = fallingPowerups[index];
     powerup.y += powerup.vy;
     if (boxesTouch(powerup, paddle)) {
+      GameAudio.play("pickup");
       if (powerup.type === "multiball") {
         const sourceBall = balls[0];
         const speed = Math.hypot(sourceBall.vx, sourceBall.vy) || BALL_SPEED;
@@ -847,6 +969,7 @@ function fireSniper() {
     return;
   }
   snipeAmmo -= 1;
+  GameAudio.play("snipe");
   const x = paddle.x + paddle.width / 2;
   const beamHalfWidth = 6;
   snipeBeams.push({ x, frames: 8 });
@@ -894,6 +1017,7 @@ function updateFallingSpikes() {
 }
 
 function onBrickDestroyed(brick, suppressExplosion = false) {
+  GameAudio.play("brickBreak");
   GameState.blocksBroken += 1;
   brickCombo += 1;
   if (brickCombo > GameStats.highestCombo) {
@@ -906,6 +1030,7 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
     triggerShake(Math.min(12, 1.5 + (brickCombo - 2) * 1.5));
   }
   if (brickCombo > 1) {
+    GameAudio.play("combo", brickCombo);
     const reward = brickCombo === 10 ? 100 : brickCombo === 20 ? 200 : brickCombo === 30 ? 1000 : 0;
     const alreadyShowingThisCombo = comboTexts.some((text) => text.value === brickCombo && text.life > 0);
     if (!alreadyShowingThisCombo && brickCombo !== lastComboDisplayValue) {
@@ -924,21 +1049,18 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
       startComboReward(reward);
     }
   }
-  if (brick.special === "multiball" || brick.special === "pentaball" || brick.special === "heart") {
+  if (
+    brick.special === "multiball" ||
+    brick.special === "pentaball" ||
+    brick.special === "heart" ||
+    brick.special === "snipe"
+  ) {
+    const powerupWidth = brick.special === "snipe" ? 34 : 20;
     fallingPowerups.push({
       type: brick.special,
-      x: brick.x + brick.width / 2 - 10,
+      x: brick.x + brick.width / 2 - powerupWidth / 2,
       y: brick.y + brick.height / 2 - 10,
-      width: 20,
-      height: 20,
-      vy: 2.5
-    });
-  } else if (brick.special === "snipe") {
-    fallingPowerups.push({
-      type: brick.special,
-      x: brick.x + brick.width / 2 - 10,
-      y: brick.y + brick.height / 2 - 10,
-      width: 20,
+      width: powerupWidth,
       height: 20,
       vy: 2.5
     });
@@ -959,6 +1081,7 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
 }
 
 function explodeBricksAround(sourceBrick) {
+  GameAudio.play("explosion");
   triggerShake(7.5);
   const targetCount = Math.random() < 0.1 ? 8 : Math.floor(Math.random() * 3) + 4;
   const centerX = sourceBrick.x + sourceBrick.width / 2;
@@ -1010,6 +1133,16 @@ function updateExplosions() {
 
 function movePaddleLeft(speed = paddle.speed) {
   paddle.x -= speed;
+}
+
+function updatePaddleResize() {
+  const widthChange = targetPaddleWidth - paddle.width;
+  const nextWidth = Math.abs(widthChange) < 0.1
+    ? targetPaddleWidth
+    : paddle.width + widthChange * PADDLE_RESIZE_RATE;
+  const centerX = paddle.x + paddle.width / 2;
+  paddle.width = nextWidth;
+  paddle.x = Math.max(0, Math.min(WIDTH - paddle.width, centerX - paddle.width / 2));
 }
 
 function movePaddle() {
@@ -1267,7 +1400,7 @@ function drawHud() {
   ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, 16, 14);
 
   const levelLabel = `Level: ${level}`;
-  const ammoLabel = `Sniper ammo: ${snipeAmmo}`;
+  const ammoLabel = `Ammo: ${snipeAmmo}`;
   ctx.font = "18px 'Fredoka One', cursive";
   const levelWidth = ctx.measureText(levelLabel).width;
   ctx.font = "11px 'Fredoka One', cursive";
@@ -1346,11 +1479,7 @@ function drawFallingPowerups() {
     if (powerup.type === "multiball") {
       ctx.fillStyle = "#35d06f";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
-      ctx.fillStyle = "black";
-      ctx.font = "18px 'Fredoka One', cursive";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("+", centerX, centerY);
+      drawMultiballIcon(ctx, centerX, centerY, 3, "#176b3a");
     } else if (powerup.type === "pentaball") {
       ctx.fillStyle = "#25c6b7";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -1367,6 +1496,18 @@ function drawFallingPowerups() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("+", centerX, centerY);
+    } else if (powerup.type === "paddle") {
+      ctx.fillStyle = "#a66bff";
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      drawPaddleArrowIcon(ctx, centerX, centerY, powerup.width * 0.84, powerup.height * 0.78, "white");
+    } else if (powerup.type === "snipe") {
+      ctx.fillStyle = "#46b5dc";
+      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+      ctx.fillStyle = "white";
+      ctx.font = "9px 'Fredoka One', cursive";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("AMMO", centerX, centerY);
     } else {
       ctx.fillStyle = "#46b5dc";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -1380,6 +1521,45 @@ function drawFallingPowerups() {
       ctx.fill();
     }
   }
+}
+
+function drawMultiballIcon(drawContext, centerX, centerY, radius, color) {
+  drawContext.save();
+  drawContext.fillStyle = color;
+  for (const [offsetX, offsetY] of [
+    [0, -radius],
+    [-radius, radius * 0.75],
+    [radius, radius * 0.75]
+  ]) {
+    drawContext.beginPath();
+    drawContext.arc(centerX + offsetX, centerY + offsetY, radius * 0.65, 0, Math.PI * 2);
+    drawContext.fill();
+  }
+  drawContext.restore();
+}
+
+function drawPaddleArrowIcon(drawContext, centerX, centerY, width, height, color) {
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const shaftHalfWidth = width * 0.24;
+  const shaftHalfHeight = height * 0.2;
+
+  drawContext.save();
+  drawContext.fillStyle = color;
+  drawContext.beginPath();
+  drawContext.moveTo(centerX - halfWidth, centerY);
+  drawContext.lineTo(centerX - shaftHalfWidth, centerY - halfHeight);
+  drawContext.lineTo(centerX - shaftHalfWidth, centerY - shaftHalfHeight);
+  drawContext.lineTo(centerX + shaftHalfWidth, centerY - shaftHalfHeight);
+  drawContext.lineTo(centerX + shaftHalfWidth, centerY - halfHeight);
+  drawContext.lineTo(centerX + halfWidth, centerY);
+  drawContext.lineTo(centerX + shaftHalfWidth, centerY + halfHeight);
+  drawContext.lineTo(centerX + shaftHalfWidth, centerY + shaftHalfHeight);
+  drawContext.lineTo(centerX - shaftHalfWidth, centerY + shaftHalfHeight);
+  drawContext.lineTo(centerX - shaftHalfWidth, centerY + halfHeight);
+  drawContext.closePath();
+  drawContext.fill();
+  drawContext.restore();
 }
 
 function drawSnipeBeams() {
@@ -1441,16 +1621,6 @@ function drawDeathScreen() {
 function drawLevelComplete() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-  ctx.fillStyle = "white";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = "30px 'Fredoka One', cursive";
-  ctx.fillText(`Level ${level} complete!`, WIDTH / 2, HEIGHT / 2 - 58);
-  ctx.font = "18px 'Fredoka One', cursive";
-  ctx.fillText(`Credits earned: +${creditsEarnedThisLevel}`, WIDTH / 2, HEIGHT / 2 - 18);
-  ctx.font = "16px 'Fredoka One', cursive";
-  ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 48);
 }
 
 function drawParticles() {
@@ -1577,14 +1747,18 @@ function updateShopDisplay() {
   creditBalance.textContent = balanceText;
   openChestButton.disabled = GameState.credits < CHEST_COST;
   openChestButton.textContent = `Open chest · ${CHEST_COST}`;
+  bricksShopTab.classList.toggle("is-active", activeShopTab === "bricks");
+  bricksShopTab.setAttribute("aria-selected", String(activeShopTab === "bricks"));
+  powerupsShopTab.classList.toggle("is-active", activeShopTab === "powerups");
+  powerupsShopTab.setAttribute("aria-selected", String(activeShopTab === "powerups"));
 
-  shopList.innerHTML = ITEM_ORDER.map((itemKey) => {
+  shopList.innerHTML = getShopItemOrder().map((itemKey) => {
     const item = ITEM_DEFS[itemKey];
     const itemState = itemInventory[itemKey];
     const owned = itemState.count > 0;
     const equipped = itemState.equipped;
     const previewText = owned ? item.previewText : "?";
-    const rarityLabel = `${item.dropChance}%`;
+    const rarityLabel = `${getChestDropChance(itemKey)}%`;
     const nameLabel = owned ? item.name : "???";
     const descriptionText = owned ? item.description : "???";
     const actionLabel = owned ? (equipped ? "Unequip" : "Equip") : "Not found";
@@ -1605,12 +1779,6 @@ function updateShopDisplay() {
       </div>
     `;
   }).join("");
-
-  shopList.querySelectorAll("[data-item-key]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleItemEquipment(button.dataset.itemKey);
-    });
-  });
 }
 
 function updateStatsDisplay() {
@@ -1656,8 +1824,9 @@ function formatCredits(credits) {
 function makeBricksForRound(roundLevel) {
   const roundBricks = makeBricks(roundLevel);
   equippedBrickOriginals = new Map();
-  if (itemInventory.snipe.equipped) {
-    addEquippedBricks(roundBricks, "snipe");
+  if (activeRunPowerups.snipe) {
+    const sniperAmmoBrickCount = Math.floor(Math.random() * 3) + 1;
+    addEquippedBricks(roundBricks, "snipe", sniperAmmoBrickCount);
   }
   if (itemInventory.multiball.equipped) {
     const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
@@ -1729,13 +1898,15 @@ function openChest() {
 
   GameState.credits -= CHEST_COST;
   GameStats.chestsOpened = Math.min(Number.MAX_SAFE_INTEGER, GameStats.chestsOpened + 1);
-  const itemKey = rollChestItem();
+  const category = activeShopTab;
+  const itemKey = rollChestItem(category);
   const item = ITEM_DEFS[itemKey];
+  const dropChance = getChestDropChance(itemKey, category);
 
   if (itemInventory[itemKey].count > 0) {
     const duplicateValue = Math.round(item.sellPrice / 10);
     addCredits(duplicateValue);
-    revealChestItem(item, item.dropChance, duplicateValue, itemKey);
+    revealChestItem(item, dropChance, duplicateValue, itemKey, category);
     updateShopDisplay();
     persistShopProgress();
     return;
@@ -1743,60 +1914,130 @@ function openChest() {
 
   itemInventory[itemKey].count = 1;
   itemInventory[itemKey].equipped = false;
-  revealChestItem(item, item.dropChance, null, itemKey);
+  revealChestItem(item, dropChance, null, itemKey, category);
   updateShopDisplay();
   persistShopProgress();
 }
 
-function drawChestRevealCanvas(item, dropChance, duplicateValue = null, itemKey) {
+function createChestTrack(winningItemKey, category) {
+  const track = [];
+  const weights = CHEST_DROP_WEIGHTS[category];
+
+  for (const itemKey of SHOP_ITEM_ORDER[category]) {
+    for (let count = 0; count < weights[itemKey]; count++) {
+      track.push(itemKey);
+    }
+  }
+
+  for (let index = track.length - 1; index > 0; index--) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [track[index], track[swapIndex]] = [track[swapIndex], track[index]];
+  }
+
+  const matchingIndexes = track
+    .map((itemKey, index) => itemKey === winningItemKey ? index : -1)
+    .filter((index) => index >= 0);
+  const originalWinningIndex = matchingIndexes[Math.floor(Math.random() * matchingIndexes.length)];
+  const winningIndex = Math.floor(track.length * 0.4) + Math.floor(Math.random() * track.length * 0.25);
+  const rotation = (originalWinningIndex - winningIndex + track.length) % track.length;
+  const rotatedTrack = track.slice(rotation).concat(track.slice(0, rotation));
+
+  return {
+    items: rotatedTrack,
+    winningIndex
+  };
+}
+
+function drawChestRevealCanvas(reveal, offset) {
   const revealCtx = chestRevealCanvas.getContext("2d");
   const width = chestRevealCanvas.width;
   const height = chestRevealCanvas.height;
-
   revealCtx.clearRect(0, 0, width, height);
-  revealCtx.save();
-  revealCtx.scale(width / 420, height / 220);
-  const drawingWidth = 420;
-  const drawingHeight = 220;
-  revealCtx.fillStyle = "rgba(14, 14, 18, 0.96)";
-  revealCtx.fillRect(0, 0, drawingWidth, drawingHeight);
+  revealCtx.fillStyle = "rgba(14, 14, 18, 0.98)";
+  revealCtx.fillRect(0, 0, width, height);
 
-  revealCtx.strokeStyle = "#f4f4f4";
-  revealCtx.lineWidth = 2;
-  revealCtx.strokeRect(10, 10, drawingWidth - 20, drawingHeight - 20);
-
-  revealCtx.fillStyle = "#d7d7d7";
-  revealCtx.font = "12px 'Fredoka One', cursive";
+  revealCtx.fillStyle = "#f4f4f4";
+  revealCtx.font = "18px 'Fredoka One', cursive";
   revealCtx.textAlign = "center";
-  revealCtx.fillText("LOOT FOUND", drawingWidth / 2, 32);
+  revealCtx.fillText("OPENING CHEST", width / 2, 25);
 
-  const iconBoxX = drawingWidth / 2 - 42;
-  const iconBoxY = 48;
-  const iconBoxSize = 84;
+  const cardWidth = 82;
+  const cardHeight = 108;
+  const cardGap = 12;
+  const cardStep = cardWidth + cardGap;
+  const trackStartX = 25;
+  const cardY = 50;
+  const markerX = width / 2;
+  const viewportX = 18;
+  const viewportY = 42;
+  const viewportWidth = width - viewportX * 2;
+  const viewportHeight = 124;
 
-  revealCtx.fillStyle = "rgba(255, 255, 255, 0.08)";
-  revealCtx.fillRect(iconBoxX, iconBoxY, iconBoxSize, iconBoxSize);
-  revealCtx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-  revealCtx.strokeRect(iconBoxX, iconBoxY, iconBoxSize, iconBoxSize);
+  revealCtx.fillStyle = "#09090d";
+  revealCtx.fillRect(viewportX, viewportY, viewportWidth, viewportHeight);
+  revealCtx.save();
+  revealCtx.beginPath();
+  revealCtx.rect(viewportX, viewportY, viewportWidth, viewportHeight);
+  revealCtx.clip();
 
-  drawChestBrickIcon(revealCtx, itemKey, drawingWidth / 2 - 34, 73, 68, 34);
+  const firstIndex = Math.max(0, Math.floor((offset - trackStartX) / cardStep) - 1);
+  const lastIndex = Math.min(
+    reveal.items.length - 1,
+    Math.ceil((offset + width - trackStartX) / cardStep) + 1
+  );
+
+  for (let index = firstIndex; index <= lastIndex; index++) {
+    const itemKey = reveal.items[index];
+    const item = ITEM_DEFS[itemKey];
+    const cardX = trackStartX + index * cardStep - offset;
+    const selected = reveal.complete && index === reveal.winningIndex;
+    const style = POWERUP_STYLES[itemKey];
+
+    revealCtx.fillStyle = "#191920";
+    revealCtx.fillRect(cardX, cardY, cardWidth, cardHeight);
+    revealCtx.strokeStyle = selected ? "#ffd34e" : style.color;
+    revealCtx.lineWidth = selected ? 3 : 1.5;
+    revealCtx.strokeRect(cardX + 1, cardY + 1, cardWidth - 2, cardHeight - 2);
+
+    drawChestBrickIcon(revealCtx, itemKey, cardX + 13, cardY + 15, cardWidth - 26, 30);
+
+    revealCtx.fillStyle = "#fff";
+    revealCtx.font = "10px 'Fredoka One', cursive";
+    revealCtx.textBaseline = "middle";
+    revealCtx.fillText(item.name, cardX + cardWidth / 2, cardY + 62, cardWidth - 6);
+    revealCtx.fillStyle = "#c8c8d0";
+    revealCtx.font = "9px 'Fredoka One', cursive";
+    revealCtx.fillText(`${getChestDropChance(itemKey, reveal.category)}% chance`, cardX + cardWidth / 2, cardY + 84);
+  }
+  revealCtx.restore();
+
+  revealCtx.fillStyle = "#ffd34e";
+  revealCtx.shadowColor = "#ffd34e";
+  revealCtx.shadowBlur = 12;
+  revealCtx.fillRect(markerX - 2, viewportY + 5, 4, viewportHeight - 10);
+  revealCtx.beginPath();
+  revealCtx.moveTo(markerX - 9, viewportY);
+  revealCtx.lineTo(markerX + 9, viewportY);
+  revealCtx.lineTo(markerX, viewportY + 12);
+  revealCtx.closePath();
+  revealCtx.fill();
+  revealCtx.shadowBlur = 0;
 
   revealCtx.textBaseline = "alphabetic";
-  revealCtx.font = "22px 'Fredoka One', cursive";
-  revealCtx.fillText(item.name, drawingWidth / 2, 158);
-
-  revealCtx.font = "14px 'Fredoka One', cursive";
-  revealCtx.fillStyle = "#d7d7d7";
-  revealCtx.fillText(`${dropChance}% drop`, drawingWidth / 2, 180);
-
-  revealCtx.font = "18px 'Fredoka One', cursive";
-  revealCtx.fillStyle = duplicateValue !== null ? "#ffd36b" : "#b7f0c1";
-  revealCtx.fillText(
-    duplicateValue !== null ? `Dupe: sold for ${duplicateValue}` : "New item found!",
-    drawingWidth / 2,
-    203
-  );
-  revealCtx.restore();
+  if (reveal.complete) {
+    revealCtx.fillStyle = reveal.duplicateValue !== null ? "#ffd36b" : "#b7f0c1";
+    revealCtx.font = "15px 'Fredoka One', cursive";
+    revealCtx.fillText(
+      reveal.duplicateValue !== null
+        ? `Duplicate sold for ${reveal.duplicateValue} credits`
+        : "New item found!",
+      width / 2,
+      214
+    );
+    revealCtx.fillStyle = "#d7d7d7";
+    revealCtx.font = "11px 'Fredoka One', cursive";
+    revealCtx.fillText("Click to continue", width / 2, 243);
+  }
 }
 
 function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
@@ -1811,9 +2052,7 @@ function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
   revealCtx.fillStyle = style.darkerColor;
 
   if (itemKey === "multiball") {
-    revealCtx.beginPath();
-    revealCtx.arc(centerX, centerY, height * 0.2, 0, Math.PI * 2);
-    revealCtx.fill();
+    drawMultiballIcon(revealCtx, centerX, centerY, height * 0.4, style.darkerColor);
   } else if (itemKey === "pentaball") {
     revealCtx.font = "11px 'Fredoka One', cursive";
     revealCtx.textAlign = "center";
@@ -1850,23 +2089,86 @@ function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
     revealCtx.beginPath();
     revealCtx.arc(centerX, centerY, 2, 0, Math.PI * 2);
     revealCtx.fill();
+  } else if (itemKey === "paddle") {
+    drawPaddleArrowIcon(revealCtx, centerX, centerY, width * 0.84, height * 0.8, style.darkerColor);
   } else {
     revealCtx.font = "13px 'Fredoka One', cursive";
     revealCtx.textAlign = "center";
     revealCtx.textBaseline = "middle";
-    revealCtx.fillText("SNIPE", centerX, centerY);
+    revealCtx.fillText("AMMO", centerX, centerY);
   }
 }
 
 function closeChestReveal() {
+  GameAudio.stopChestRoll();
+  if (chestRevealAnimationFrame) {
+    cancelAnimationFrame(chestRevealAnimationFrame);
+    chestRevealAnimationFrame = 0;
+  }
+  activeChestReveal = null;
+  chestReveal.classList.remove("is-spinning");
   chestReveal.hidden = true;
   chestReveal.onclick = null;
 }
 
-function revealChestItem(item, dropChance, duplicateValue = null, itemKey) {
+function revealChestItem(item, dropChance, duplicateValue = null, itemKey, category = activeShopTab) {
+  const track = createChestTrack(itemKey, category);
+  activeChestReveal = {
+    item,
+    itemKey,
+    category,
+    dropChance,
+    duplicateValue,
+    items: track.items,
+    winningIndex: track.winningIndex,
+    startedAt: null,
+    complete: false
+  };
   chestReveal.hidden = false;
-  chestReveal.onclick = closeChestReveal;
-  drawChestRevealCanvas(item, dropChance, duplicateValue, itemKey);
+  chestReveal.classList.add("is-spinning");
+  chestReveal.onclick = null;
+  chestRevealCanvas.setAttribute("aria-label", "Chest reel spinning");
+  GameAudio.startChestRoll();
+  chestRevealAnimationFrame = requestAnimationFrame(animateChestReveal);
+}
+
+function animateChestReveal(timestamp) {
+  const reveal = activeChestReveal;
+  if (!reveal) {
+    return;
+  }
+
+  const cardWidth = 82;
+  const cardStep = cardWidth + 12;
+  const trackStartX = 25;
+  const markerX = chestRevealCanvas.width / 2;
+  const winningCardCenter = trackStartX + reveal.winningIndex * cardStep + cardWidth / 2;
+  const targetOffset = winningCardCenter - markerX;
+
+  if (reveal.startedAt === null) {
+    reveal.startedAt = timestamp;
+  }
+
+  const progress = Math.min((timestamp - reveal.startedAt) / CHEST_ROLL_DURATION, 1);
+  const easedProgress = 1 - Math.pow(1 - progress, 4);
+  const offset = targetOffset * easedProgress;
+  reveal.complete = progress === 1;
+  drawChestRevealCanvas(reveal, offset);
+
+  if (reveal.complete) {
+    chestRevealAnimationFrame = 0;
+    GameAudio.stopChestRoll();
+    GameAudio.play("chestReward");
+    chestReveal.classList.remove("is-spinning");
+    chestReveal.onclick = closeChestReveal;
+    chestRevealCanvas.setAttribute(
+      "aria-label",
+      `Won ${reveal.item.name}. ${reveal.dropChance} percent drop chance. Click to continue.`
+    );
+    return;
+  }
+
+  chestRevealAnimationFrame = requestAnimationFrame(animateChestReveal);
 }
 
 function openShop() {
@@ -1971,6 +2273,12 @@ function toggleItemEquipment(itemKey) {
 
   const nextEquipped = !itemState.equipped;
   itemState.equipped = nextEquipped;
+
+  if (nextEquipped && (itemKey === "snipe" || itemKey === "paddle")) {
+    updateShopDisplay();
+    persistShopProgress();
+    return;
+  }
 
   if (nextEquipped) {
     const count = itemKey === "multiball" ? Math.floor(Math.random() * 4) + 1 : 1;
