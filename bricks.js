@@ -19,8 +19,15 @@ const POWERUP_STYLES = {
   spike: { color: "#ef4545", darkerColor: "#842626" },
   snipe: { color: "#46b5dc", darkerColor: "#245d78" },
   explosive: { color: "#ffad33", darkerColor: "#a82f0d" },
+  laser: { color: "#ff5f87", darkerColor: "#821f45" },
+  debris: { color: "#b7834b", darkerColor: "#56381f" },
   paddle: { color: "#a66bff", darkerColor: "#57318c" },
-  timeMachine: { color: "#bd68ed", darkerColor: "#5b2677" }
+  timeMachine: { color: "#bd68ed", darkerColor: "#5b2677" },
+  magnet: { color: "#f04bce", darkerColor: "#701a62" },
+  machineGun: { color: "#e5d04c", darkerColor: "#665719" },
+  doublePaddle: { color: "#5bbaff", darkerColor: "#164c78" },
+  gravityBreaker: { color: "#d74747", darkerColor: "#741d1d" },
+  teleporter: { color: "#d066ff", darkerColor: "#572477" }
 };
 
 function stayStill() {}
@@ -43,7 +50,9 @@ function getLevelBrickLayout(level) {
   const heartCount = level < 2 ? 0 : level === 9
     ? (Math.random() < 0.5 ? 2 : 4)
     : level >= 5 ? 2 : 1;
-  return { rows, spikeCount, heartCount };
+  const gravityBreakerCount = level >= 4 ? 1 : 0;
+  const teleporterCount = level >= 5 ? 1 : 0;
+  return { rows, spikeCount, heartCount, gravityBreakerCount, teleporterCount };
 }
 
 // Builds the list of bricks. Each brick is an object with an
@@ -63,6 +72,17 @@ function makeBricks(level = 1) {
     const index = Math.floor(Math.random() * totalBricks);
     if (!specialIndexes.has(index)) {
       specialIndexes.set(index, "heart");
+    }
+  }
+  for (const [special, count] of [
+    ["gravityBreaker", layout.gravityBreakerCount],
+    ["teleporter", layout.teleporterCount]
+  ]) {
+    while ([...specialIndexes.values()].filter((value) => value === special).length < count) {
+      const index = Math.floor(Math.random() * totalBricks);
+      if (!specialIndexes.has(index)) {
+        specialIndexes.set(index, special);
+      }
     }
   }
   const twoHitIndexes = new Set();
@@ -96,6 +116,9 @@ function makeBricks(level = 1) {
         targetY: y,
         width: BRICK_WIDTH,
         height: BRICK_HEIGHT,
+        gridRow: row,
+        gridColumn: col,
+        gridRowCount: layout.rows,
         hitstillbroken: needsTwoHits ? hitstillbroken : 1,
         color: powerupStyle ? powerupStyle.color : `hsl(${hue}, 75%, 55%)`,
         darkerColor: powerupStyle ? powerupStyle.darkerColor : needsTwoHits ? `hsl(${hue}, 75%, 25%)` : null,
@@ -184,8 +207,36 @@ function drawBricks() {
         ctx.restore();
       } else if (brick.special === "paddle") {
         drawPaddleArrowIcon(ctx, centerX, centerY, 46, 24, brick.darkerColor);
-      } else if (brick.special === "timeMachine") {
-        drawTimeMachineSpiral(ctx, centerX, centerY, 9, brick.darkerColor);
+      } else if (brick.special === "laser") {
+        ctx.strokeStyle = brick.darkerColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(centerX - 18, centerY);
+        ctx.lineTo(centerX + 18, centerY);
+        ctx.moveTo(centerX, centerY - 9);
+        ctx.lineTo(centerX, centerY + 9);
+        ctx.stroke();
+      } else if (brick.special === "debris") {
+        ctx.fillRect(centerX - 17, centerY - 8, 8, 7);
+        ctx.fillRect(centerX - 3, centerY - 2, 9, 8);
+        ctx.fillRect(centerX + 10, centerY - 10, 7, 7);
+      } else if (brick.special === "gravityBreaker") {
+        ctx.strokeStyle = brick.darkerColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY - 10);
+        ctx.lineTo(centerX, centerY + 7);
+        ctx.lineTo(centerX - 8, centerY);
+        ctx.moveTo(centerX, centerY + 7);
+        ctx.lineTo(centerX + 8, centerY);
+        ctx.stroke();
+      } else if (brick.special === "teleporter") {
+        ctx.strokeStyle = brick.darkerColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 9, -Math.PI * 0.8, Math.PI * 0.8);
+        ctx.arc(centerX, centerY, 5, Math.PI * 0.2, Math.PI * 1.8);
+        ctx.stroke();
       } else {
         ctx.font = "12px 'Fredoka One', cursive";
         ctx.textAlign = "center";

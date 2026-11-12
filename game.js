@@ -17,6 +17,7 @@ const startGameButton = document.getElementById("start-game");
 const openMainMenuButton = document.getElementById("open-main-menu");
 const skipLevelButton = document.getElementById("skip-level");
 const gameBoard = document.querySelector(".game-board");
+const equipmentNotice = document.getElementById("equipment-notice");
 const openShopButton = document.getElementById("open-shop");
 const openSettingsButton = document.getElementById("open-settings");
 const openStatsButton = document.getElementById("open-stats");
@@ -36,12 +37,15 @@ const adminMoneyForm = document.getElementById("admin-money-form");
 const adminMoneyInput = document.getElementById("admin-money");
 const adminBrickForm = document.getElementById("admin-brick-form");
 const adminBrickSelect = document.getElementById("admin-brick");
+const adminPowerupForm = document.getElementById("admin-powerup-form");
+const adminPowerupSelect = document.getElementById("admin-powerup");
 const adminStatus = document.getElementById("admin-status");
 const shopList = document.getElementById("shop-list");
 const chestReveal = document.getElementById("chest-reveal");
 const chestRevealCanvas = document.getElementById("chest-reveal-canvas");
 let activeChestReveal = null;
 let chestRevealAnimationFrame = 0;
+let equipmentNoticeTimeout = null;
 const creditBalance = document.getElementById("credit-balance");
 const statHighestCombo = document.getElementById("stat-highest-combo");
 const statMostMoney = document.getElementById("stat-most-money");
@@ -75,15 +79,18 @@ const PADDLE_BASE_WIDTH = 90;
 const PADDLE_WIDE_WIDTH = 135;
 const PADDLE_RESIZE_RATE = 0.18;
 const SHOP_STORAGE_KEY = "block-breaker-shop";
-const ITEM_ORDER = ["multiball", "snipe", "explosive", "pentaball", "paddle", "timeMachine"];
-const BRICK_ITEM_ORDER = ["multiball", "explosive", "pentaball"];
+const ITEM_ORDER = [
+  "multiball", "snipe", "explosive", "pentaball", "laser", "debris",
+  "paddle", "timeMachine", "magnet", "machineGun", "doublePaddle"
+];
+const BRICK_ITEM_ORDER = ["multiball", "explosive", "pentaball", "laser", "debris"];
 const SHOP_ITEM_ORDER = {
-  bricks: ["pentaball", "explosive", "multiball"],
-  powerups: ["snipe", "paddle", "timeMachine"]
+  bricks: ["pentaball", "explosive", "multiball", "laser", "debris"],
+  powerups: ["snipe", "paddle", "timeMachine", "magnet", "machineGun", "doublePaddle"]
 };
 const CHEST_DROP_WEIGHTS = {
-  bricks: { pentaball: 1, explosive: 5, multiball: 30 },
-  powerups: { snipe: 19, paddle: 10, timeMachine: 1 }
+  bricks: { pentaball: 1, explosive: 5, multiball: 30, laser: 8, debris: 10 },
+  powerups: { snipe: 19, paddle: 10, timeMachine: 1, magnet: 10, machineGun: 6, doublePaddle: 4 }
 };
 let activeShopTab = "bricks";
 const ITEM_DEFS = Object.freeze({
@@ -102,6 +109,22 @@ const ITEM_DEFS = Object.freeze({
     description: "Explodes when broken, destroying 4-6 nearby bricks.",
     rarity: 2,
     sellPrice: 600
+  },
+  laser: {
+    name: "Laser Brick",
+    previewClass: "laser-brick-preview",
+    previewText: "",
+    description: "When broken, fires lasers up, down, left, and right to clear brick lines.",
+    rarity: 2,
+    sellPrice: 650
+  },
+  debris: {
+    name: "Debris Brick",
+    previewClass: "debris-brick-preview",
+    previewText: "",
+    description: "When broken, also breaks every brick directly below it.",
+    rarity: 2,
+    sellPrice: 500
   },
   snipe: {
     name: "Sniper Powerup",
@@ -131,14 +154,38 @@ const ITEM_DEFS = Object.freeze({
     name: "Time Machine",
     previewClass: "time-machine-brick-preview",
     previewText: "",
-    description: "Adds a pickup that slows everything except the paddle for 5 seconds.",
+    description: "Press P to slow everything except the paddle for 5 seconds.",
     rarity: 1,
     sellPrice: 1500
+  },
+  magnet: {
+    name: "Magnet Powerup",
+    previewClass: "magnet-powerup-preview",
+    previewText: "",
+    description: "Pulls the ball toward the paddle during the next round.",
+    rarity: 3,
+    sellPrice: 550
+  },
+  machineGun: {
+    name: "Machine Gun",
+    previewClass: "machine-gun-powerup-preview",
+    previewText: "",
+    description: "Press F to fire ball bullets for 3 seconds during the next round.",
+    rarity: 2,
+    sellPrice: 700
+  },
+  doublePaddle: {
+    name: "Double Paddle",
+    previewClass: "double-paddle-powerup-preview",
+    previewText: "",
+    description: "Adds a separate blue paddle beside yours for the next round.",
+    rarity: 1,
+    sellPrice: 900
   }
 });
 const TIME_MACHINE_ICON_MARKUP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-2 3-2 3 0 0 4-6 4-6 0 0-5 9-7 12-2 3 6-1 13-7 14" fill="none" stroke="#5b2677" stroke-linecap="round" stroke-width="2.5"/></svg>';
-const RUN_POWERUP_CHOICES = ["snipe", "paddle", "timeMachine"];
-let activeRunPowerups = { snipe: false, paddle: false, timeMachine: false };
+const RUN_POWERUP_CHOICES = ["snipe", "paddle", "timeMachine", "magnet", "machineGun", "doublePaddle"];
+let activeRunPowerups = Object.fromEntries(RUN_POWERUP_CHOICES.map((powerup) => [powerup, false]));
 
 function getShopItemOrder(category = activeShopTab) {
   return [...SHOP_ITEM_ORDER[category]].sort((first, second) => (
@@ -205,6 +252,9 @@ const GameStats = savedShopProgress.stats;
 adminBrickSelect.innerHTML = BRICK_ITEM_ORDER.map((itemKey) => (
   `<option value="${itemKey}">${ITEM_DEFS[itemKey].name}</option>`
 )).join("");
+adminPowerupSelect.innerHTML = SHOP_ITEM_ORDER.powerups.map((itemKey) => (
+  `<option value="${itemKey}">${ITEM_DEFS[itemKey].name}</option>`
+)).join("");
 updateShopDisplay();
 updateStatsDisplay();
 
@@ -224,6 +274,12 @@ const PADDLE_BOOST_DURATION = 100;
 const PADDLE_BOOST_COOLDOWN = 7000;
 const BALL_SQUISH_FRAMES = 18;
 const BALL_TRAIL_LENGTH = 10;
+const DOUBLE_PADDLE_GAP = 12;
+const MACHINE_GUN_DURATION = 3000;
+const MACHINE_GUN_FIRE_INTERVAL = 160;
+const MACHINE_GUN_BULLET_SPEED = 10;
+const MAGNET_RANGE = 190;
+const MAGNET_STRENGTH = 0.025;
 
 let balls = [];
 let ballLaunched = false;
@@ -268,6 +324,7 @@ const paddle = {
 };
 let paddleTrail = [];
 let targetPaddleWidth = PADDLE_BASE_WIDTH;
+let doublePaddle = null;
 
 
 // ------------------------------------------------------------
@@ -281,7 +338,12 @@ let fallingHearts = [];
 let fallingPowerups = [];
 let fallingSpikes = [];
 let snipeBeams = [];
+let laserBeams = [];
+let machineGunBullets = [];
 let snipeAmmo = 0;
+let machineGunUntil = 0;
+let machineGunNextShot = 0;
+let machineGunUsed = false;
 let paddleHitTexts = [];
 let comboTexts = [];
 let comboRewards = [];
@@ -297,6 +359,7 @@ let levelTransitionFrame = 0;
 let levelComplete = false;
 let levelCompleteFadeFrame = 0;
 let gameWon = false;
+let soloRoundPowerup = null;
 let roundRewardRevealTimeout = null;
 let timeMachineSlowUntil = 0;
 let timeMachineSlowTick = false;
@@ -338,8 +401,22 @@ document.addEventListener("keydown", function (event) {
     return;
   }
   keys[event.key.toLowerCase()] = true;
+  if (event.code === "Enter" && levelComplete && soloRoundPowerup) {
+    event.preventDefault();
+    chooseRunPowerup(soloRoundPowerup);
+    return;
+  }
   if ((event.code === "ShiftLeft" || event.code === "ShiftRight") && !event.repeat) {
     activatePaddleBoost();
+  }
+  if (event.key.toLowerCase() === "p" && !event.repeat && activeRunPowerups.timeMachine && !deathScreen && !levelComplete && !levelTransition) {
+    event.preventDefault();
+    timeMachineSlowUntil = performance.now() + TIME_MACHINE_DURATION;
+    timeMachineSlowTick = false;
+  }
+  if (event.key.toLowerCase() === "f" && !event.repeat && activeRunPowerups.machineGun && !deathScreen && !levelComplete && !levelTransition) {
+    event.preventDefault();
+    startMachineGun();
   }
   if (event.code === "Enter" && deathScreen) {
     event.preventDefault();
@@ -381,8 +458,7 @@ skipLevelButton.addEventListener("click", function () {
   levelComplete = true;
   levelCompleteFadeFrame = 0;
   resetPaddleSlow();
-  activeRunPowerups.paddle = false;
-  targetPaddleWidth = PADDLE_BASE_WIDTH;
+  clearRunPowerups();
   resetBall();
   updateAdminVisibility();
   showRoundReward();
@@ -522,6 +598,24 @@ adminBrickForm.addEventListener("submit", function (event) {
   adminStatus.textContent = `${ITEM_DEFS[itemKey].name} added for free.`;
 });
 
+adminPowerupForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+  const itemKey = adminPowerupSelect.value;
+  if (!adminUnlocked || !SHOP_ITEM_ORDER.powerups.includes(itemKey)) {
+    adminStatus.textContent = "Choose a valid power-up.";
+    return;
+  }
+  if (itemInventory[itemKey].count > 0) {
+    adminStatus.textContent = `You already have the ${ITEM_DEFS[itemKey].name}.`;
+    return;
+  }
+  itemInventory[itemKey].count = 1;
+  itemInventory[itemKey].equipped = false;
+  updateShopDisplay();
+  persistShopProgress();
+  adminStatus.textContent = `${ITEM_DEFS[itemKey].name} added for free.`;
+});
+
 
 // ------------------------------------------------------------
 // UPDATE: runs 60 times every second. Move things, then check
@@ -560,6 +654,7 @@ function update() {
   updateParticles();
   updateBrickEffects();
   updateExplosions();
+  updateLaserBeams();
   updatePaddleHitTexts();
   updateComboTexts();
   updateComboRewards();
@@ -590,6 +685,7 @@ function update() {
     return;
   }
 
+  updateMachineGun();
   updateFallingPowerups();
   updateFallingSpikes();
   updateSnipeBeams();
@@ -639,8 +735,7 @@ function update() {
     levelComplete = true;
     levelCompleteFadeFrame = 0;
     resetPaddleSlow();
-    activeRunPowerups.paddle = false;
-    targetPaddleWidth = PADDLE_BASE_WIDTH;
+    clearRunPowerups();
     resetBall();
     updateAdminVisibility();
     showRoundReward();
@@ -712,6 +807,11 @@ function resetGame() {
   fallingHearts = [];
   fallingPowerups = [];
   fallingSpikes = [];
+  laserBeams = [];
+  machineGunBullets = [];
+  machineGunUntil = 0;
+  machineGunNextShot = 0;
+  machineGunUsed = false;
   for (const reward of comboRewards) {
     reward.element.remove();
   }
@@ -743,12 +843,24 @@ function resetGame() {
   targetPaddleWidth = PADDLE_BASE_WIDTH;
   paddle.width = PADDLE_BASE_WIDTH;
   paddle.x = WIDTH / 2 - paddle.width / 2;
+  doublePaddle = null;
+  machineGunBullets = [];
+  machineGunUntil = 0;
+  machineGunNextShot = 0;
+  machineGunUsed = false;
   resetBall();
 }
 
 function beginLevel(nextLevel) {
   level = nextLevel;
   targetPaddleWidth = activeRunPowerups.paddle ? PADDLE_WIDE_WIDTH : PADDLE_BASE_WIDTH;
+  doublePaddle = activeRunPowerups.doublePaddle
+    ? { x: 0, y: paddle.y, width: PADDLE_BASE_WIDTH, height: paddle.height }
+    : null;
+  if (doublePaddle) {
+    paddle.x = (WIDTH - paddle.width - DOUBLE_PADDLE_GAP - doublePaddle.width) / 2;
+    syncDoublePaddle();
+  }
   if (level > GameStats.highestLevel) {
     GameStats.highestLevel = level;
     updateStatsDisplay();
@@ -769,6 +881,11 @@ function beginLevel(nextLevel) {
   fallingPowerups = [];
   fallingSpikes = [];
   snipeBeams = [];
+  laserBeams = [];
+  machineGunBullets = [];
+  machineGunUntil = 0;
+  machineGunNextShot = 0;
+  machineGunUsed = false;
   resetBall();
 }
 
@@ -779,41 +896,58 @@ function nextRound() {
 }
 
 function chooseRunPowerup(powerup) {
-  if (!levelComplete || gameWon || !RUN_POWERUP_CHOICES.includes(powerup) || itemInventory[powerup].count === 0) {
+  if (
+    !levelComplete ||
+    gameWon ||
+    !RUN_POWERUP_CHOICES.includes(powerup) ||
+    itemInventory[powerup].count === 0 ||
+    !itemInventory[powerup].equipped
+  ) {
     return;
   }
+  clearRunPowerups();
+  activeRunPowerups[powerup] = true;
   if (powerup === "snipe") {
-    activeRunPowerups.snipe = true;
     snipeAmmo += 1;
-  } else if (powerup === "timeMachine") {
-    activeRunPowerups.timeMachine = true;
-  } else {
-    activeRunPowerups.paddle = true;
   }
+  soloRoundPowerup = null;
   nextRound();
 }
 
 function clearRunPowerups() {
-  activeRunPowerups = { snipe: false, paddle: false, timeMachine: false };
+  const hadDoublePaddle = Boolean(doublePaddle);
+  activeRunPowerups = Object.fromEntries(RUN_POWERUP_CHOICES.map((powerup) => [powerup, false]));
   snipeAmmo = 0;
   timeMachineSlowUntil = 0;
   timeMachineSlowTick = false;
+  machineGunUntil = 0;
+  machineGunNextShot = 0;
+  machineGunUsed = false;
+  machineGunBullets = [];
+  doublePaddle = null;
+  laserBeams = [];
+  soloRoundPowerup = null;
   targetPaddleWidth = PADDLE_BASE_WIDTH;
   if (typeof paddle !== "undefined") {
     paddle.width = PADDLE_BASE_WIDTH;
-    paddle.x = Math.min(paddle.x, WIDTH - paddle.width);
+    paddle.x = hadDoublePaddle
+      ? (WIDTH - paddle.width) / 2
+      : Math.min(paddle.x, WIDTH - paddle.width);
   }
 }
 
 function showRoundReward() {
   clearTimeout(roundRewardRevealTimeout);
   roundRewardRevealTimeout = null;
+  soloRoundPowerup = null;
   roundReward.classList.remove("is-revealing");
   roundReward.hidden = true;
   roundRewardRoundTitle.hidden = false;
   roundRewardOptions.hidden = gameWon;
   roundRewardActions.hidden = !gameWon;
   roundRewardShopHint.hidden = gameWon;
+  finishRunButton.hidden = !gameWon;
+  returnToMenuButton.hidden = !gameWon;
 
   if (level === 10) {
     gameWon = true;
@@ -834,12 +968,18 @@ function showRoundReward() {
 
   roundRewardRoundTitle.hidden = false;
   roundRewardRoundTitle.textContent = `Round ${level} completed`;
-  roundRewardTitle.textContent = "Pick a power up";
+  const choices = updateRoundRewardChoices();
   roundRewardDetails.textContent = `Credits: +${creditsEarnedThisLevel}`;
-  updateRoundRewardChoices();
-  roundRewardOptions.hidden = false;
-  roundRewardActions.hidden = true;
-  scheduleRoundRewardReveal();
+  if (choices.length === 1) {
+    soloRoundPowerup = choices[0];
+    roundReward.hidden = true;
+    canvas.focus({ preventScroll: true });
+  } else {
+    roundRewardTitle.textContent = "Pick a power up";
+    roundRewardOptions.hidden = false;
+    roundRewardActions.hidden = true;
+    scheduleRoundRewardReveal();
+  }
 }
 
 function scheduleRoundRewardReveal() {
@@ -862,9 +1002,15 @@ function scheduleRoundRewardReveal() {
 }
 
 function updateRoundRewardChoices() {
+  const choices = [];
   for (const button of roundRewardOptions.querySelectorAll("[data-run-powerup]")) {
-    button.hidden = itemInventory[button.dataset.runPowerup].count === 0;
+    const powerup = button.dataset.runPowerup;
+    button.hidden = itemInventory[powerup].count === 0 || !itemInventory[powerup].equipped;
+    if (!button.hidden) {
+      choices.push(powerup);
+    }
   }
+  return choices;
 }
 
 function updateLevelTransition() {
@@ -1014,7 +1160,7 @@ function updateFallingPowerups() {
   for (let index = fallingPowerups.length - 1; index >= 0; index--) {
     const powerup = fallingPowerups[index];
     powerup.y += powerup.vy;
-    if (boxesTouch(powerup, paddle)) {
+    if (boxesTouch(powerup, paddle) || (doublePaddle && boxesTouch(powerup, doublePaddle))) {
       GameAudio.play("pickup");
       if (powerup.type === "multiball") {
         const sourceBall = balls[0];
@@ -1049,9 +1195,6 @@ function updateFallingPowerups() {
         GameState.lives += 1;
       } else if (powerup.type === "snipe") {
         snipeAmmo += 1;
-      } else if (powerup.type === "timeMachine") {
-        timeMachineSlowUntil = performance.now() + TIME_MACHINE_DURATION;
-        timeMachineSlowTick = false;
       }
       fallingPowerups.splice(index, 1);
     } else if (powerup.y > HEIGHT) {
@@ -1092,6 +1235,56 @@ function updateSnipeBeams() {
   snipeBeams = snipeBeams.filter((beam) => beam.frames > 0);
 }
 
+function startMachineGun() {
+  if (machineGunUsed) {
+    return;
+  }
+  machineGunUsed = true;
+  machineGunUntil = performance.now() + MACHINE_GUN_DURATION;
+  machineGunNextShot = 0;
+}
+
+function updateMachineGun() {
+  const now = performance.now();
+  if (now < machineGunUntil && now >= machineGunNextShot) {
+    const bulletSize = 15;
+    machineGunBullets.push({
+      x: paddle.x + paddle.width / 2 - bulletSize / 2,
+      y: paddle.y - bulletSize,
+      width: bulletSize,
+      height: bulletSize,
+      vy: -MACHINE_GUN_BULLET_SPEED,
+      trail: []
+    });
+    machineGunNextShot = now + MACHINE_GUN_FIRE_INTERVAL;
+  } else if (now >= machineGunUntil) {
+    machineGunUntil = 0;
+  }
+
+  for (let index = machineGunBullets.length - 1; index >= 0; index--) {
+    const bullet = machineGunBullets[index];
+    bullet.trail.unshift({ x: bullet.x + bullet.width / 2, y: bullet.y + bullet.height / 2 });
+    if (bullet.trail.length > BALL_TRAIL_LENGTH) {
+      bullet.trail.pop();
+    }
+    bullet.y += bullet.vy;
+    const target = bricks.find((brick) => !brick.pendingDestroy && boxesTouch(bullet, brick));
+    if (target) {
+      destroyBrick(target);
+      machineGunBullets.splice(index, 1);
+    } else if (bullet.y + bullet.height < 0) {
+      machineGunBullets.splice(index, 1);
+    }
+  }
+}
+
+function updateLaserBeams() {
+  for (const beam of laserBeams) {
+    beam.frames -= 1;
+  }
+  laserBeams = laserBeams.filter((beam) => beam.frames > 0);
+}
+
 function updateFallingSpikes() {
   for (let index = fallingSpikes.length - 1; index >= 0; index--) {
     const spike = fallingSpikes[index];
@@ -1103,7 +1296,7 @@ function updateFallingSpikes() {
       }
     }
 
-    if (boxesTouch(spike, paddle)) {
+    if (boxesTouch(spike, paddle) || (doublePaddle && boxesTouch(spike, doublePaddle))) {
       paddleSlowed = true;
       paddle.speed = PADDLE_SPEED * 0.75;
       paddleSlowUntil = performance.now() + PADDLE_SLOW_DURATION;
@@ -1120,7 +1313,7 @@ function updateFallingSpikes() {
   }
 }
 
-function onBrickDestroyed(brick, suppressExplosion = false) {
+function onBrickDestroyed(brick, suppressSpecialEffects = false) {
   GameAudio.play("brickBreak");
   GameState.blocksBroken += 1;
   brickCombo += 1;
@@ -1157,8 +1350,7 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
     brick.special === "multiball" ||
     brick.special === "pentaball" ||
     brick.special === "heart" ||
-    brick.special === "snipe" ||
-    brick.special === "timeMachine"
+    brick.special === "snipe"
   ) {
     const powerupWidth = brick.special === "snipe" ? 34 : 20;
     fallingPowerups.push({
@@ -1180,9 +1372,73 @@ function onBrickDestroyed(brick, suppressExplosion = false) {
     });
   }
 
-  if (brick.special === "explosive" && !suppressExplosion) {
-    explodeBricksAround(brick);
+  if (!suppressSpecialEffects) {
+    if (brick.special === "explosive") {
+      explodeBricksAround(brick);
+    } else if (brick.special === "laser") {
+      fireLaserBrick(brick);
+    } else if (brick.special === "debris") {
+      breakBricksBelow(brick);
+    }
   }
+}
+
+function fireLaserBrick(sourceBrick) {
+  const centerX = sourceBrick.x + sourceBrick.width / 2;
+  const centerY = sourceBrick.y + sourceBrick.height / 2;
+  laserBeams.push(
+    { x1: centerX, y1: centerY, x2: centerX, y2: 0, frames: 10 },
+    { x1: centerX, y1: centerY, x2: centerX, y2: HEIGHT, frames: 10 },
+    { x1: centerX, y1: centerY, x2: 0, y2: centerY, frames: 10 },
+    { x1: centerX, y1: centerY, x2: WIDTH, y2: centerY, frames: 10 }
+  );
+  const targets = bricks.filter((brick) => (
+    brick.gridRow === sourceBrick.gridRow ||
+    brick.gridColumn === sourceBrick.gridColumn
+  ));
+  for (const target of targets) {
+    destroyBrick(target, false, true);
+  }
+}
+
+function breakBricksBelow(sourceBrick) {
+  const targets = bricks.filter((brick) => (
+    brick.gridColumn === sourceBrick.gridColumn &&
+    brick.gridRow > sourceBrick.gridRow
+  ));
+  for (const target of targets) {
+    destroyBrick(target, false, true);
+  }
+}
+
+function tryTeleportBrick(brick) {
+  if (Math.random() >= 0.5) {
+    return false;
+  }
+
+  const rows = brick.gridRowCount;
+  const occupiedSlots = new Set(bricks.map((candidate) => `${candidate.gridRow}:${candidate.gridColumn}`));
+  const openSlots = [];
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < BRICK_COLUMNS; column++) {
+      if (!occupiedSlots.has(`${row}:${column}`)) {
+        openSlots.push({ row, column });
+      }
+    }
+  }
+  if (openSlots.length === 0) {
+    return false;
+  }
+
+  const slot = openSlots[Math.floor(Math.random() * openSlots.length)];
+  const totalWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_GAP;
+  brick.x = (WIDTH - totalWidth) / 2 + slot.column * (BRICK_WIDTH + BRICK_GAP);
+  brick.startX = brick.x;
+  brick.y = BRICKS_TOP + slot.row * (BRICK_HEIGHT + BRICK_GAP);
+  brick.targetY = brick.y;
+  brick.gridRow = slot.row;
+  brick.gridColumn = slot.column;
+  return true;
 }
 
 function explodeBricksAround(sourceBrick) {
@@ -1248,6 +1504,15 @@ function updatePaddleResize() {
   const centerX = paddle.x + paddle.width / 2;
   paddle.width = nextWidth;
   paddle.x = Math.max(0, Math.min(WIDTH - paddle.width, centerX - paddle.width / 2));
+  syncDoublePaddle();
+}
+
+function syncDoublePaddle() {
+  if (!doublePaddle) {
+    return;
+  }
+  doublePaddle.x = paddle.x + paddle.width + DOUBLE_PADDLE_GAP;
+  doublePaddle.y = paddle.y;
 }
 
 function movePaddle() {
@@ -1264,9 +1529,11 @@ function movePaddle() {
   if (paddle.x < 0) {
     paddle.x = 0;
   }
-  if (paddle.x + paddle.width > WIDTH) {
-    paddle.x = WIDTH - paddle.width;
+  const paddleGroupWidth = paddle.width + (doublePaddle ? DOUBLE_PADDLE_GAP + doublePaddle.width : 0);
+  if (paddle.x + paddleGroupWidth > WIDTH) {
+    paddle.x = WIDTH - paddleGroupWidth;
   }
+  syncDoublePaddle();
 
   if (paddleSlowed) {
     paddleTrail = [];
@@ -1289,6 +1556,7 @@ function updatePaddleTrail() {
 
 function moveBall(ball) {
   if (ballLaunched) {
+    applyMagnetToBall(ball);
     ball.vy = ball.vy + BALL_GRAVITY;
     ball.x = ball.x + ball.vx;
     ball.y = ball.y + ball.vy;
@@ -1296,6 +1564,31 @@ function moveBall(ball) {
     ball.x = paddle.x + paddle.width / 2 - ball.width / 2;
     ball.y = paddle.y - ball.height;
   }
+}
+
+function applyMagnetToBall(ball) {
+  if (!activeRunPowerups.magnet) {
+    return;
+  }
+  const ballCenterX = ball.x + ball.width / 2;
+  const ballCenterY = ball.y + ball.height / 2;
+  const targets = doublePaddle ? [paddle, doublePaddle] : [paddle];
+  const target = targets.reduce((nearest, candidate) => (
+    Math.abs(candidate.x + candidate.width / 2 - ballCenterX) <
+      Math.abs(nearest.x + nearest.width / 2 - ballCenterX)
+      ? candidate
+      : nearest
+  ));
+  const dx = target.x + target.width / 2 - ballCenterX;
+  const dy = target.y - ballCenterY;
+  const distance = Math.hypot(dx, dy);
+  if (dy <= 0 || distance > MAGNET_RANGE || distance === 0) {
+    return;
+  }
+
+  const speed = Math.hypot(ball.vx, ball.vy) || BALL_SPEED;
+  ball.vx += (dx / distance * speed - ball.vx) * MAGNET_STRENGTH;
+  ball.vy += (dy / distance * speed - ball.vy) * MAGNET_STRENGTH;
 }
 
 function updateBallTrail(ball, moving = ballLaunched) {
@@ -1341,6 +1634,10 @@ function draw() {
   drawPaddleTrail();
   ctx.fillStyle = paddleSlowed ? "#ef4545" : "white";
   ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+  if (doublePaddle) {
+    ctx.fillStyle = "#46b5dc";
+    ctx.fillRect(doublePaddle.x, doublePaddle.y, doublePaddle.width, doublePaddle.height);
+  }
   if (paddleHitFlashFrames > 0) {
     const progress = 1 - paddleHitFlashFrames / 8;
     const radius = 8 + progress * 24;
@@ -1377,6 +1674,8 @@ function draw() {
   drawBricks();  // bricks.js
   drawExplosions();
   drawSnipeBeams();
+  drawLaserBeams();
+  drawMachineGunBullets();
   drawParticles();
   drawFallingPowerups();
   drawFallingSpikes();
@@ -1403,6 +1702,23 @@ function drawPaddleTrail() {
     ctx.globalAlpha = point.life / PADDLE_TRAIL_LIFE * 0.3;
     ctx.fillRect(point.x, paddle.y, paddle.width, paddle.height);
   }
+  ctx.restore();
+}
+if (activeRunPowerups.machineGun && !machineGunUsed && !levelComplete && !deathScreen) {
+  ctx.save();
+  ctx.fillStyle = "#fff2a1";
+  ctx.font = "14px 'Fredoka One', cursive";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("PRESS F TO FIRE", WIDTH / 2, paddle.y - 5);
+  ctx.restore();
+} else if (machineGunUntil > performance.now()) {
+  ctx.save();
+  ctx.fillStyle = "#fff2a1";
+  ctx.font = "14px 'Fredoka One', cursive";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`MACHINE GUN · ${((machineGunUntil - performance.now()) / 1000).toFixed(1)}s`, WIDTH / 2, paddle.y - 5);
   ctx.restore();
 }
 
@@ -1502,7 +1818,8 @@ function drawHud() {
   ctx.font = "18px 'Fredoka One', cursive";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, 16, 14);
+  const blocksLabel = `Blocks broken: ${GameState.blocksBroken}`;
+  ctx.fillText(blocksLabel, 16, 14);
 
   const levelLabel = `Level: ${level}`;
   const ammoLabel = `Ammo: ${snipeAmmo}`;
@@ -1531,6 +1848,26 @@ function drawHud() {
     ctx.fillText(ammoLabel, ammoBox.x + ammoBox.width - 8, ammoBox.y + 25);
   }
 
+  const now = performance.now();
+  if (gameStarted && activeRunPowerups.timeMachine) {
+    const timeMachineLabel = now < timeMachineSlowUntil
+      ? `TIME SLOWED · ${Math.ceil((timeMachineSlowUntil - now) / 1000)}s`
+      : "PRESS P TO SLOW TIME";
+    ctx.save();
+    ctx.fillStyle = now < timeMachineSlowUntil ? POWERUP_STYLES.timeMachine.color : "white";
+    ctx.font = "14px 'Fredoka One', cursive";
+    ctx.textBaseline = "top";
+    const timeMachineLabelWidth = ctx.measureText(timeMachineLabel).width;
+    ctx.font = "18px 'Fredoka One', cursive";
+    const leftEdge = 16 + ctx.measureText(blocksLabel).width + 12;
+    const rightEdge = ammoBox.x - 12;
+    const availableWidth = Math.max(0, rightEdge - leftEdge);
+    ctx.font = availableWidth >= timeMachineLabelWidth ? "14px 'Fredoka One', cursive" : "11px 'Fredoka One', cursive";
+    ctx.textAlign = "center";
+    ctx.fillText(timeMachineLabel, (leftEdge + rightEdge) / 2, 14, availableWidth);
+    ctx.restore();
+  }
+
   if (snipeAmmo > 0) {
     const glow = (Math.sin(performance.now() / 250) + 1) / 2;
     ctx.save();
@@ -1540,16 +1877,6 @@ function drawHud() {
     ctx.shadowColor = "white";
     ctx.shadowBlur = 3 + glow * 14;
     ctx.fillText("SPACE TO FIRE", WIDTH / 2, paddle.y - 5);
-    ctx.restore();
-  }
-
-  if (performance.now() < timeMachineSlowUntil) {
-    ctx.save();
-    ctx.fillStyle = POWERUP_STYLES.timeMachine.color;
-    ctx.font = "14px 'Fredoka One', cursive";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText(`TIME SLOWED · ${Math.ceil((timeMachineSlowUntil - performance.now()) / 1000)}s`, WIDTH / 2, 8);
     ctx.restore();
   }
 
@@ -1623,10 +1950,6 @@ function drawFallingPowerups() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("AMMO", centerX, centerY);
-    } else if (powerup.type === "timeMachine") {
-      ctx.fillStyle = POWERUP_STYLES.timeMachine.color;
-      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
-      drawTimeMachineSpiral(ctx, centerX, centerY, 7, POWERUP_STYLES.timeMachine.darkerColor);
     } else {
       ctx.fillStyle = "#46b5dc";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -1716,6 +2039,43 @@ function drawSnipeBeams() {
   ctx.restore();
 }
 
+function drawLaserBeams() {
+  ctx.save();
+  ctx.strokeStyle = "#ffb5d1";
+  ctx.shadowColor = "#ff3975";
+  ctx.shadowBlur = 12;
+  for (const beam of laserBeams) {
+    ctx.globalAlpha = beam.frames / 10;
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(beam.x1, beam.y1);
+    ctx.lineTo(beam.x2, beam.y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawMachineGunBullets() {
+  for (const bullet of machineGunBullets) {
+    ctx.save();
+    ctx.fillStyle = "#8beaff";
+    for (let index = bullet.trail.length - 1; index >= 0; index--) {
+      const point = bullet.trail[index];
+      ctx.globalAlpha = 0.3 * (1 - index / bullet.trail.length);
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, bullet.width / 2 * (1 - index / bullet.trail.length), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = "#8beaff";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(bullet.x + bullet.width / 2, bullet.y + bullet.height / 2, bullet.width / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawFallingSpikes() {
   for (const spike of fallingSpikes) {
     ctx.fillStyle = "#ef4545";
@@ -1760,6 +2120,22 @@ function drawDeathScreen() {
 }
 
 function drawLevelComplete() {
+  if (soloRoundPowerup) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "42px 'Fredoka One', cursive";
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "black";
+    ctx.fillStyle = "white";
+    ctx.strokeText("YOU WON!", WIDTH / 2, HEIGHT / 2 - 12);
+    ctx.fillText("YOU WON!", WIDTH / 2, HEIGHT / 2 - 12);
+    ctx.font = "18px 'Fredoka One', cursive";
+    ctx.strokeText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 30);
+    ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 30);
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * levelCompleteFadeFrame / LEVEL_COMPLETE_FADE_FRAMES})`;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 }
@@ -1847,6 +2223,12 @@ function loadShopProgress() {
     if (itemInventoryState.paddle.count === 0) {
       itemInventoryState.paddle.count = 1;
       itemInventoryState.paddle.equipped = true;
+    }
+    if (!SHOP_ITEM_ORDER.powerups.some((itemKey) => itemInventoryState[itemKey].equipped)) {
+      const fallbackPowerup = SHOP_ITEM_ORDER.powerups.find((itemKey) => itemInventoryState[itemKey].count > 0);
+      if (fallbackPowerup) {
+        itemInventoryState[fallbackPowerup].equipped = true;
+      }
     }
 
     for (const key of ["highestCombo", "mostMoney", "totalMoney", "chestsOpened", "highestLevel"]) {
@@ -1979,9 +2361,6 @@ function makeBricksForRound(roundLevel) {
     const sniperAmmoBrickCount = Math.floor(Math.random() * 3) + 1;
     addEquippedBricks(roundBricks, "snipe", sniperAmmoBrickCount);
   }
-  if (activeRunPowerups.timeMachine) {
-    addEquippedBricks(roundBricks, "timeMachine");
-  }
   if (itemInventory.multiball.equipped) {
     const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
     addEquippedBricks(roundBricks, "multiball", multiballBrickCount);
@@ -1992,6 +2371,12 @@ function makeBricksForRound(roundLevel) {
   if (itemInventory.explosive.equipped) {
     const explosiveBrickCount = Math.floor(Math.random() * 2) + 1;
     addEquippedBricks(roundBricks, "explosive", explosiveBrickCount);
+  }
+  if (itemInventory.laser.equipped) {
+    addEquippedBricks(roundBricks, "laser");
+  }
+  if (itemInventory.debris.equipped) {
+    addEquippedBricks(roundBricks, "debris");
   }
   return roundBricks;
 }
@@ -2243,11 +2628,39 @@ function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
     revealCtx.beginPath();
     revealCtx.arc(centerX, centerY, 2, 0, Math.PI * 2);
     revealCtx.fill();
+  } else if (itemKey === "laser") {
+    revealCtx.strokeStyle = style.darkerColor;
+    revealCtx.lineWidth = 3;
+    revealCtx.beginPath();
+    revealCtx.moveTo(centerX - width * 0.3, centerY);
+    revealCtx.lineTo(centerX + width * 0.3, centerY);
+    revealCtx.moveTo(centerX, centerY - height * 0.3);
+    revealCtx.lineTo(centerX, centerY + height * 0.3);
+    revealCtx.stroke();
+  } else if (itemKey === "debris") {
+    revealCtx.fillRect(centerX - 16, centerY - 7, 9, 7);
+    revealCtx.fillRect(centerX - 3, centerY - 1, 10, 8);
+    revealCtx.fillRect(centerX + 10, centerY - 9, 7, 7);
+  } else if (itemKey === "magnet") {
+    revealCtx.lineWidth = 4;
+    revealCtx.beginPath();
+    revealCtx.arc(centerX, centerY, height * 0.32, -Math.PI * 0.8, Math.PI * 0.8);
+    revealCtx.stroke();
+  } else if (itemKey === "machineGun") {
+    revealCtx.fillRect(centerX - 15, centerY - 2, 30, 4);
+    for (const offset of [-12, 0, 12]) {
+      revealCtx.beginPath();
+      revealCtx.arc(centerX + offset, centerY + 9, 3, 0, Math.PI * 2);
+      revealCtx.fill();
+    }
+  } else if (itemKey === "doublePaddle") {
+    revealCtx.fillRect(centerX - 18, centerY - 5, 14, 5);
+    revealCtx.fillRect(centerX + 4, centerY - 5, 14, 5);
   } else if (itemKey === "paddle") {
     drawPaddleArrowIcon(revealCtx, centerX, centerY, width * 0.84, height * 0.8, style.darkerColor);
   } else if (itemKey === "timeMachine") {
     drawTimeMachineSpiral(revealCtx, centerX, centerY, height * 0.36, style.darkerColor);
-  } else {
+  } else if (itemKey === "snipe") {
     revealCtx.font = "13px 'Fredoka One', cursive";
     revealCtx.textAlign = "center";
     revealCtx.textBaseline = "middle";
@@ -2429,9 +2842,23 @@ function toggleItemEquipment(itemKey) {
   }
 
   const nextEquipped = !itemState.equipped;
+  if (
+    !nextEquipped &&
+    SHOP_ITEM_ORDER.powerups.includes(itemKey) &&
+    SHOP_ITEM_ORDER.powerups.filter((powerupKey) => itemInventory[powerupKey].equipped).length <= 1
+  ) {
+    equipmentNotice.textContent = "Can't unequip, need at least one power-up equipped.";
+    equipmentNotice.hidden = false;
+    window.clearTimeout(equipmentNoticeTimeout);
+    equipmentNoticeTimeout = window.setTimeout(() => {
+      equipmentNotice.hidden = true;
+      equipmentNoticeTimeout = null;
+    }, 2500);
+    return;
+  }
   itemState.equipped = nextEquipped;
 
-  if (itemKey === "snipe" || itemKey === "paddle" || itemKey === "timeMachine") {
+  if (SHOP_ITEM_ORDER.powerups.includes(itemKey)) {
     updateShopDisplay();
     persistShopProgress();
     return;

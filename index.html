@@ -21,6 +21,7 @@
     <section class="game-stage" aria-label="Block Breaker">
       <div class="game-board">
         <canvas id="game" width="720" height="540" tabindex="-1" aria-label="Block Breaker game"></canvas>
+        <output id="equipment-notice" class="equipment-notice" aria-live="polite" hidden></output>
         <section id="round-reward" class="round-reward" aria-labelledby="round-complete-title round-reward-title" hidden>
           <h2 id="round-complete-title">Round 1 completed</h2>
           <h3 id="round-reward-title">Pick a power up</h3>
@@ -35,12 +36,27 @@
               <span class="powerup-choice-name">Paddle</span>
               <span class="powerup-choice-description">Use a 50% wider paddle for the next round.</span>
             </button>
-            <button class="powerup-choice" type="button" data-run-powerup="timeMachine" hidden>
+            <button class="powerup-choice" type="button" data-run-powerup="timeMachine">
               <span class="powerup-choice-icon time-machine-brick-preview" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M12 12c0-2 3-2 3 0 0 4-6 4-6 0 0-5 9-7 12-2 3 6-1 13-7 14" fill="none" stroke="#5b2677" stroke-linecap="round" stroke-width="2.5"></path></svg>
               </span>
               <span class="powerup-choice-name">Time Machine</span>
-              <span class="powerup-choice-description">Catch its pickup to slow everything except the paddle for 5 seconds.</span>
+              <span class="powerup-choice-description">Press P to slow time for 5 seconds.</span>
+            </button>
+            <button class="powerup-choice" type="button" data-run-powerup="magnet">
+              <span class="powerup-choice-icon magnet-powerup-preview" aria-hidden="true"></span>
+              <span class="powerup-choice-name">Magnet</span>
+              <span class="powerup-choice-description">Pull the ball toward the paddle.</span>
+            </button>
+            <button class="powerup-choice" type="button" data-run-powerup="machineGun">
+              <span class="powerup-choice-icon machine-gun-powerup-preview" aria-hidden="true"></span>
+              <span class="powerup-choice-name">Machine Gun</span>
+              <span class="powerup-choice-description">Press F to fire ball bullets for 3 seconds.</span>
+            </button>
+            <button class="powerup-choice" type="button" data-run-powerup="doublePaddle">
+              <span class="powerup-choice-icon double-paddle-powerup-preview" aria-hidden="true"></span>
+              <span class="powerup-choice-name">Double Paddle</span>
+              <span class="powerup-choice-description">Add a separate blue paddle beside yours.</span>
             </button>
           </div>
           <p id="round-reward-details"></p>
@@ -107,6 +123,13 @@
                     <button type="submit">Buy brick</button>
                   </div>
                 </form>
+                <form id="admin-powerup-form" class="admin-control">
+                  <label for="admin-powerup">Buy a power-up for free</label>
+                  <div class="admin-control-actions">
+                    <select id="admin-powerup" name="powerup"></select>
+                    <button type="submit">Buy power-up</button>
+                  </div>
+                </form>
                 <output id="admin-status" class="admin-status" aria-live="polite"></output>
               </section>
             </div>
@@ -127,7 +150,7 @@
       </div>
       <h1 id="game-title" class="game-title">Block Breaker</h1>
     </section>
-    <p>Move with the arrow keys or A and D. Press Shift for a brief paddle speed boost (7-second cooldown). Press Space to launch the ball, then press Space again to fire collected Snipe ammo.</p>
+    <p>Move with the arrow keys or A and D. Press Shift for a brief paddle speed boost (7-second cooldown). Press Space to launch the ball and fire collected Snipe ammo, P to activate Time Machine, or F to start the Machine Gun burst.</p>
   </main>
 
   <!-- Load the audio API first; game.js defines globals used by the remaining scripts. -->

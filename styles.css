@@ -22,6 +22,7 @@ main {
   max-width: 760px;
   padding: 12px 18px;
   text-align: center;
+  zoom: 0.95;
 }
 
 .level-code {
@@ -104,6 +105,26 @@ main {
   width: min(100%, 720px);
   margin: 0 auto;
   box-shadow: 0 0 72px rgba(255, 255, 255, 0.55);
+}
+
+.equipment-notice {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  transform: translateX(-50%);
+  border: 1px solid #fff;
+  background: rgba(0, 0, 0, 0.94);
+  color: #fff;
+  font-size: clamp(11px, 2vw, 14px);
+  text-align: center;
+  pointer-events: none;
+}
+
+.equipment-notice[hidden] {
+  display: none;
 }
 
 .game-board.menu-dismissing {
@@ -701,6 +722,111 @@ canvas {
   min-height: 50px;
 }
 
+.laser-brick-preview,
+.debris-brick-preview,
+.magnet-powerup-preview,
+.machine-gun-powerup-preview,
+.double-paddle-powerup-preview {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  display: inline-flex;
+  width: 82px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+}
+
+.laser-brick-preview {
+  background: #ff5f87;
+}
+
+.laser-brick-preview::before,
+.laser-brick-preview::after {
+  position: absolute;
+  background: #821f45;
+  content: "";
+}
+
+.laser-brick-preview::before {
+  width: 4px;
+  height: 26px;
+}
+
+.laser-brick-preview::after {
+  width: 48px;
+  height: 4px;
+}
+
+.debris-brick-preview {
+  background: #b7834b;
+}
+
+.debris-brick-preview::before {
+  width: 42px;
+  height: 8px;
+  background: repeating-linear-gradient(90deg, #56381f 0 8px, transparent 8px 13px);
+  box-shadow: 0 10px 0 -1px #56381f;
+  content: "";
+}
+
+.magnet-powerup-preview {
+  background: #f04bce;
+}
+
+.magnet-powerup-preview::before {
+  width: 20px;
+  height: 20px;
+  border: 5px solid #701a62;
+  border-top-color: transparent;
+  border-radius: 50%;
+  content: "";
+}
+
+.machine-gun-powerup-preview {
+  background: #e5d04c;
+}
+
+.machine-gun-powerup-preview::before {
+  width: 36px;
+  height: 6px;
+  background: #665719;
+  box-shadow: 0 -9px 0 -1px #665719;
+  content: "";
+}
+
+.machine-gun-powerup-preview::after {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 14px 0 0 #fff, 28px 0 0 #fff;
+  content: "";
+}
+
+.double-paddle-powerup-preview {
+  background: #5bbaff;
+}
+
+.double-paddle-powerup-preview::before,
+.double-paddle-powerup-preview::after {
+  position: absolute;
+  bottom: 8px;
+  width: 26px;
+  height: 6px;
+  background: #164c78;
+  content: "";
+}
+
+.double-paddle-powerup-preview::before {
+  left: calc(50% - 32px);
+}
+
+.double-paddle-powerup-preview::after {
+  right: calc(50% - 32px);
+}
+
 .round-reward {
   position: absolute;
   inset: 13% 3%;
@@ -736,7 +862,8 @@ canvas {
   }
 }
 
-.round-reward [hidden] {
+.round-reward [hidden],
+.round-reward .powerup-choice[hidden] {
   display: none;
 }
 
@@ -774,7 +901,7 @@ canvas {
   display: flex;
   flex: 0 1 clamp(135px, 23vw, 180px);
   min-width: 0;
-  height: clamp(150px, 25vw, 190px);
+  min-height: clamp(150px, 25vw, 190px);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -818,7 +945,7 @@ canvas {
 }
 
 .powerup-choice-description {
-  max-width: 24ch;
+  max-width: 100%;
   font-size: clamp(14px, 2vw, 16px);
   line-height: 1.3;
 }

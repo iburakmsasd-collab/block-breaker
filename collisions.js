@@ -42,18 +42,31 @@ function bounceOffWalls(ball) {
 // ball.vy > 0 means "the ball is moving down", so it only bounces
 // when it is falling onto the paddle.
 function bounceOffPaddle(ball) {
-  if (boxesTouch(ball, paddle) && ball.vy > 0) {
+  if (ball.vy <= 0) {
+    return;
+  }
+
+  const activePaddles = doublePaddle ? [paddle, doublePaddle] : [paddle];
+  for (const activePaddle of activePaddles) {
+    if (!boxesTouch(ball, activePaddle)) {
+      continue;
+    }
+
     GameAudio.play("paddle");
-    ball.y = paddle.y - ball.height;  // sit on top of the paddle
+    ball.y = activePaddle.y - ball.height;
+    ball.piercingDownUntilPaddle = false;
     ball.squish = BALL_SQUISH_FRAMES;
     paddleHitFlashFrames = 8;
-    paddleHitFlashX = Math.max(paddle.x, Math.min(paddle.x + paddle.width, ball.x + ball.width / 2));
+    paddleHitFlashX = Math.max(
+      activePaddle.x,
+      Math.min(activePaddle.x + activePaddle.width, ball.x + ball.width / 2)
+    );
     brickCombo = 0;
     lastComboDisplayValue = 0;
     for (let index = 0; index < 12; index++) {
       particles.push({
         x: ball.x + ball.width / 2 + (Math.random() - 0.5) * ball.width,
-        y: paddle.y,
+        y: activePaddle.y,
         width: 3,
         height: 3,
         vx: (Math.random() - 0.5) * 4,
@@ -65,11 +78,14 @@ function bounceOffPaddle(ball) {
         color: "#fff6a0"
       });
     }
-    const impactOffset = (ball.x + ball.width / 2 - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+    const impactOffset = (
+      ball.x + ball.width / 2 - (activePaddle.x + activePaddle.width / 2)
+    ) / (activePaddle.width / 2);
     const clampedOffset = Math.max(-1, Math.min(1, impactOffset));
     const speed = Math.hypot(ball.vx, ball.vy);
     ball.vx = clampedOffset * speed * 0.8;
     ball.vy = -Math.sqrt(speed * speed - ball.vx * ball.vx);
+    return;
   }
 }
 
@@ -174,7 +190,7 @@ function updateBrickEffects() {
   }
 }
 
-function destroyBrick(brick, particlesAlreadyEmitted = false, suppressExplosion = false) {
+function destroyBrick(brick, particlesAlreadyEmitted = false, suppressSpecialEffects = false) {
   const brickIndex = bricks.indexOf(brick);
   if (brickIndex === -1) {
     return;
@@ -188,13 +204,17 @@ function destroyBrick(brick, particlesAlreadyEmitted = false, suppressExplosion 
     }
   }
   bricks.splice(brickIndex, 1);
-  onBrickDestroyed(brick, suppressExplosion);
+  onBrickDestroyed(brick, suppressSpecialEffects);
 }
 
 // The ball bounces off bricks and removes each one after enough hits.
 function bounceOffBricks(ball, damage = true) {
   for (const brick of [...bricks]) {
-    if (brick.pendingDestroy || !boxesTouch(ball, brick)) {
+    if (
+      brick.pendingDestroy ||
+      (ball.piercingDownUntilPaddle && ball.vy > 0) ||
+      !boxesTouch(ball, brick)
+    ) {
       continue;  // not touching this brick, check the next one
     }
 
@@ -220,8 +240,18 @@ function bounceOffBricks(ball, damage = true) {
       }
     }
 
+    if (damage && brick.special === "teleporter" && tryTeleportBrick(brick)) {
+      break;
+    }
+
     if (damage) {
       damageBrick(brick);
+      if (brick.special === "gravityBreaker") {
+        const speed = Math.hypot(ball.vx, ball.vy) || BALL_SPEED;
+        ball.vx = 0;
+        ball.vy = speed * 2;
+        ball.piercingDownUntilPaddle = true;
+      }
     }
     break;  // bounce off one brick per update, then stop looking
   }
