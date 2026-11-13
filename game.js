@@ -14,6 +14,8 @@ const codeStatus = document.getElementById("code-status");
 const levelCodeBar = document.querySelector(".level-code");
 const startMenu = document.getElementById("start-menu");
 const startGameButton = document.getElementById("start-game");
+const gameModeSelection = document.getElementById("game-mode-selection");
+const backToMainMenuButton = document.getElementById("back-to-main-menu");
 const openMainMenuButton = document.getElementById("open-main-menu");
 const skipLevelButton = document.getElementById("skip-level");
 const gameBoard = document.querySelector(".game-board");
@@ -52,6 +54,7 @@ const statMostMoney = document.getElementById("stat-most-money");
 const statTotalMoney = document.getElementById("stat-total-money");
 const statChestsOpened = document.getElementById("stat-chests-opened");
 const statHighestLevel = document.getElementById("stat-highest-level");
+const statImpossibleSquaredWins = document.getElementById("stat-impossible-squared-wins");
 const gameTitle = document.getElementById("game-title");
 const menuCanvas = document.getElementById("menu-canvas");
 const menuCtx = menuCanvas.getContext("2d");
@@ -64,13 +67,27 @@ const roundRewardOptions = document.getElementById("round-reward-options");
 const finishRunButton = document.getElementById("finish-run");
 const returnToMenuButton = document.getElementById("return-to-menu");
 const roundRewardActions = document.querySelector(".round-reward-actions");
+const tryImpossibleButton = document.getElementById("try-impossible");
+const tryImpossibleSquaredButton = document.getElementById("try-impossible-squared");
+const tryImpossibleOption = document.getElementById("try-impossible-option");
+const tryImpossibleSquaredOption = document.getElementById("try-impossible-squared-option");
+const modePowerupSelect = document.getElementById("mode-powerup-select");
+const modePowerupOptions = document.getElementById("mode-powerup-options");
+const modePowerupStatus = document.getElementById("mode-powerup-status");
+const beginImpossibleButton = document.getElementById("begin-impossible");
+const cancelImpossibleButton = document.getElementById("cancel-impossible");
+const openGuideButton = document.getElementById("open-guide");
+const closeGuideButton = document.getElementById("close-guide");
+const guideRecommended = document.getElementById("guide-recommended");
+const guideMenu = document.getElementById("guide-menu");
+const guideItems = document.getElementById("guide-items");
 
 const WIDTH = 600;
 const HEIGHT = 450;
 ctx.scale(canvas.width / WIDTH, canvas.height / HEIGHT);
 const PADDLE_TRAIL_LENGTH = 10;
 const PADDLE_TRAIL_LIFE = 12;
-const CHEST_COST = 250;
+const CHEST_COST = 100;
 const CHEST_ROLL_DURATION = 4000;
 const ROUND_REWARD_REVEAL_DELAY = 500;
 const LEVEL_COMPLETE_FADE_FRAMES = 18;
@@ -79,18 +96,22 @@ const PADDLE_BASE_WIDTH = 90;
 const PADDLE_WIDE_WIDTH = 135;
 const PADDLE_RESIZE_RATE = 0.18;
 const SHOP_STORAGE_KEY = "block-breaker-shop";
+const IMPOSSIBLE_2_WINS_STORAGE_KEY = "block-breaker-impossible-squared-wins";
+const HOW_TO_PLAY_STORAGE_KEY = "block-breaker-how-to-play-seen";
+let impossibleSquaredWins = 0;
+let hasSeenHowToPlay = false;
 const ITEM_ORDER = [
   "multiball", "snipe", "explosive", "pentaball", "laser", "debris",
   "paddle", "timeMachine", "magnet", "machineGun", "doublePaddle"
 ];
 const BRICK_ITEM_ORDER = ["multiball", "explosive", "pentaball", "laser", "debris"];
 const SHOP_ITEM_ORDER = {
-  bricks: ["pentaball", "explosive", "multiball", "laser", "debris"],
-  powerups: ["snipe", "paddle", "timeMachine", "magnet", "machineGun", "doublePaddle"]
+  bricks: ["multiball", "debris", "pentaball", "laser", "explosive"],
+  powerups: ["paddle", "timeMachine", "magnet", "snipe", "doublePaddle", "machineGun"]
 };
 const CHEST_DROP_WEIGHTS = {
-  bricks: { pentaball: 1, explosive: 5, multiball: 30, laser: 8, debris: 10 },
-  powerups: { snipe: 19, paddle: 10, timeMachine: 1, magnet: 10, machineGun: 6, doublePaddle: 4 }
+  bricks: { pentaball: 17, explosive: 1, multiball: 40, laser: 2, debris: 40 },
+  powerups: { snipe: 10, paddle: 50, timeMachine: 20, magnet: 15, machineGun: 1, doublePaddle: 4 }
 };
 let activeShopTab = "bricks";
 const ITEM_DEFS = Object.freeze({
@@ -99,7 +120,7 @@ const ITEM_DEFS = Object.freeze({
     previewClass: "pentaball-brick-preview",
     previewText: "PENTA",
     description: "Launches 10 extra balls from the paddle.",
-    rarity: 1,
+    rarity: 3,
     sellPrice: 1200
   },
   explosive: {
@@ -107,7 +128,7 @@ const ITEM_DEFS = Object.freeze({
     previewClass: "explosive-brick-preview",
     previewText: "",
     description: "Explodes when broken, destroying 4-6 nearby bricks.",
-    rarity: 2,
+    rarity: 5,
     sellPrice: 600
   },
   laser: {
@@ -115,14 +136,14 @@ const ITEM_DEFS = Object.freeze({
     previewClass: "laser-brick-preview",
     previewText: "",
     description: "When broken, fires lasers up, down, left, and right to clear brick lines.",
-    rarity: 2,
+    rarity: 4,
     sellPrice: 650
   },
   debris: {
     name: "Debris Brick",
     previewClass: "debris-brick-preview",
     previewText: "",
-    description: "When broken, also breaks every brick directly below it.",
+    description: "When broken, drops block fragments that destroy bricks in their path.",
     rarity: 2,
     sellPrice: 500
   },
@@ -130,7 +151,7 @@ const ITEM_DEFS = Object.freeze({
     name: "Sniper Powerup",
     previewClass: "sniper-brick-preview",
     previewText: "AMMO",
-    description: "Adds 1–3 sniper shots. Press Space to break a column of blocks.",
+    description: "Adds 1–2 sniper shots. Press Space to break a column of blocks.",
     rarity: 3,
     sellPrice: 500
   },
@@ -139,7 +160,7 @@ const ITEM_DEFS = Object.freeze({
     previewClass: "multiball-brick-preview",
     previewText: "",
     description: "Shoots 2 extra balls from the paddle.",
-    rarity: 4,
+    rarity: 2,
     sellPrice: 200
   },
   paddle: {
@@ -147,7 +168,7 @@ const ITEM_DEFS = Object.freeze({
     previewClass: "paddle-brick-preview",
     previewText: "",
     description: "Makes your paddle 50% longer for the next round.",
-    rarity: 3,
+    rarity: 0,
     sellPrice: 400
   },
   timeMachine: {
@@ -163,23 +184,23 @@ const ITEM_DEFS = Object.freeze({
     previewClass: "magnet-powerup-preview",
     previewText: "",
     description: "Pulls the ball toward the paddle during the next round.",
-    rarity: 3,
+    rarity: 2,
     sellPrice: 550
   },
   machineGun: {
     name: "Machine Gun",
     previewClass: "machine-gun-powerup-preview",
     previewText: "",
-    description: "Press F to fire ball bullets for 3 seconds during the next round.",
-    rarity: 2,
+    description: "Press F to fire ball bullets for 1 second during the next round.",
+    rarity: 5,
     sellPrice: 700
   },
   doublePaddle: {
     name: "Double Paddle",
     previewClass: "double-paddle-powerup-preview",
     previewText: "",
-    description: "Adds a separate blue paddle beside yours for the next round.",
-    rarity: 1,
+    description: "Adds a blue paddle below yours for the next round.",
+    rarity: 4,
     sellPrice: 900
   }
 });
@@ -189,7 +210,7 @@ let activeRunPowerups = Object.fromEntries(RUN_POWERUP_CHOICES.map((powerup) => 
 
 function getShopItemOrder(category = activeShopTab) {
   return [...SHOP_ITEM_ORDER[category]].sort((first, second) => (
-    ITEM_DEFS[second].rarity - ITEM_DEFS[first].rarity ||
+    ITEM_DEFS[first].rarity - ITEM_DEFS[second].rarity ||
     CHEST_DROP_WEIGHTS[category][second] - CHEST_DROP_WEIGHTS[category][first]
   ));
 }
@@ -206,14 +227,15 @@ function rollChestItem(category = activeShopTab) {
   const roll = Math.random() * totalWeight;
   let runningTotal = 0;
 
-  for (const itemKey of SHOP_ITEM_ORDER[category]) {
+  for (const itemKey of getShopItemOrder(category)) {
     runningTotal += weights[itemKey];
     if (roll < runningTotal) {
       return itemKey;
     }
   }
 
-  return SHOP_ITEM_ORDER[category][SHOP_ITEM_ORDER[category].length - 1];
+  const orderedItems = getShopItemOrder(category);
+  return orderedItems[orderedItems.length - 1];
 }
 
 const GameState = {
@@ -222,13 +244,15 @@ const GameState = {
   credits: 0
 };
 
-function createDefaultStats(initialCredits = 0) {
+function createDefaultStats(initialCredits = 500) {
   return {
     highestCombo: 0,
     mostMoney: initialCredits,
     totalMoney: initialCredits,
     chestsOpened: 0,
-    highestLevel: 1
+    highestLevel: 1,
+    normalGameCompleted: false,
+    rainbowUnlocked: false
   };
 }
 
@@ -257,6 +281,15 @@ adminPowerupSelect.innerHTML = SHOP_ITEM_ORDER.powerups.map((itemKey) => (
 )).join("");
 updateShopDisplay();
 updateStatsDisplay();
+try {
+  hasSeenHowToPlay = window.localStorage.getItem(HOW_TO_PLAY_STORAGE_KEY) === "true";
+  const savedWins = Number(window.localStorage.getItem(IMPOSSIBLE_2_WINS_STORAGE_KEY));
+  impossibleSquaredWins = Number.isSafeInteger(savedWins) && savedWins >= 0 ? savedWins : 0;
+} catch (error) {
+  console.error("Could not load local game counters.", error);
+}
+updateStatsDisplay();
+updateGuideRecommendation();
 
 
 // ------------------------------------------------------------
@@ -274,12 +307,12 @@ const PADDLE_BOOST_DURATION = 100;
 const PADDLE_BOOST_COOLDOWN = 7000;
 const BALL_SQUISH_FRAMES = 18;
 const BALL_TRAIL_LENGTH = 10;
-const DOUBLE_PADDLE_GAP = 12;
-const MACHINE_GUN_DURATION = 3000;
+const DOUBLE_PADDLE_GAP = 4;
+const MACHINE_GUN_DURATION = 1000;
 const MACHINE_GUN_FIRE_INTERVAL = 160;
 const MACHINE_GUN_BULLET_SPEED = 10;
 const MAGNET_RANGE = 190;
-const MAGNET_STRENGTH = 0.025;
+const MAGNET_STRENGTH = 0.05;
 
 let balls = [];
 let ballLaunched = false;
@@ -307,7 +340,7 @@ function launchBall() {
   ballLaunched = true;
   for (const ball of balls) {
     ball.vx = 0;
-    ball.vy = -BALL_SPEED;
+    ball.vy = -BALL_SPEED * (currentGameMode === "impossibleSquared" ? 0.5 : 1);
   }
 }
 
@@ -353,18 +386,25 @@ let shakeFrames = 0;
 let shakeStrength = 0;
 let gameStarted = false;
 let level = 1;
+let currentGameMode = "normal";
+let modePowerupChoices = [];
+let modeSelectionFromVictory = false;
+let teleportBricksAtStart = 0;
+let teleportBricksBroken = 0;
+let debrisParticles = [];
 let creditsEarnedThisLevel = 0;
 let levelTransition = false;
 let levelTransitionFrame = 0;
 let levelComplete = false;
 let levelCompleteFadeFrame = 0;
 let gameWon = false;
-let soloRoundPowerup = null;
+let roundRewardPowerupChoices = [];
 let roundRewardRevealTimeout = null;
 let timeMachineSlowUntil = 0;
 let timeMachineSlowTick = false;
 let paddleSlowed = false;
 let paddleSlowUntil = 0;
+let paddleSlowStacks = 0;
 let paddleBoostUntil = 0;
 let paddleBoostCooldownUntil = 0;
 let paddleHitFlashFrames = 0;
@@ -383,12 +423,17 @@ updateAdminVisibility();
 const keys = {};
 
 document.addEventListener("keydown", function (event) {
+  if (!guideMenu.hidden && event.key === "Escape") {
+    event.preventDefault();
+    closeGuide();
+    return;
+  }
   if ((shopOpen || settingsOpen || statsOpen) && event.key === "Escape") {
     event.preventDefault();
     exitMenu();
     return;
   }
-  if (shopOpen || settingsOpen || statsOpen) {
+  if (shopOpen || settingsOpen || statsOpen || !guideMenu.hidden) {
     return;
   }
   if (levelCodeForm.contains(event.target)) {
@@ -401,11 +446,6 @@ document.addEventListener("keydown", function (event) {
     return;
   }
   keys[event.key.toLowerCase()] = true;
-  if (event.code === "Enter" && levelComplete && soloRoundPowerup) {
-    event.preventDefault();
-    chooseRunPowerup(soloRoundPowerup);
-    return;
-  }
   if ((event.code === "ShiftLeft" || event.code === "ShiftRight") && !event.repeat) {
     activatePaddleBoost();
   }
@@ -414,7 +454,7 @@ document.addEventListener("keydown", function (event) {
     timeMachineSlowUntil = performance.now() + TIME_MACHINE_DURATION;
     timeMachineSlowTick = false;
   }
-  if (event.key.toLowerCase() === "f" && !event.repeat && activeRunPowerups.machineGun && !deathScreen && !levelComplete && !levelTransition) {
+  if (event.key.toLowerCase() === "f" && !event.repeat && activeRunPowerups.machineGun && ballLaunched && !deathScreen && !levelComplete && !levelTransition) {
     event.preventDefault();
     startMachineGun();
   }
@@ -422,6 +462,8 @@ document.addEventListener("keydown", function (event) {
     event.preventDefault();
     if (GameState.lives === 0) {
       resetGame();
+    } else {
+      resetBall();
     }
     deathScreen = false;
     updateAdminVisibility();
@@ -443,12 +485,48 @@ document.addEventListener("keydown", function (event) {
 });
 
 startGameButton.addEventListener("click", function () {
-  startGameButton.disabled = true;
-  startMenu.classList.remove("is-opening");
-  gameBoard.classList.add("menu-dismissing");
-  startMenu.classList.add("is-starting");
-  gameTitle.classList.add("is-started");
+  gameModeSelection.hidden = false;
+  startMenu.classList.add("is-selecting-mode");
+  gameModeSelection.querySelector('[data-game-mode="normal"]').focus();
 });
+
+backToMainMenuButton.addEventListener("click", function () {
+  gameModeSelection.hidden = true;
+  startMenu.classList.remove("is-selecting-mode");
+  startGameButton.focus();
+});
+
+gameModeSelection.querySelectorAll("[data-game-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const mode = button.dataset.gameMode;
+    if (mode === "normal") {
+      startNormalGame();
+    } else {
+      openModePowerupSelect(mode === "impossible" ? 11 : 12, false);
+    }
+  });
+});
+
+tryImpossibleButton.addEventListener("click", () => openModePowerupSelect(11, true));
+tryImpossibleSquaredButton.addEventListener("click", () => openModePowerupSelect(12, true));
+beginImpossibleButton.addEventListener("click", beginSelectedImpossibleLevel);
+cancelImpossibleButton.addEventListener("click", cancelModePowerupSelect);
+modePowerupOptions.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-mode-powerup]");
+  if (!button) {
+    return;
+  }
+  const powerup = button.dataset.modePowerup;
+  if (modePowerupChoices.includes(powerup)) {
+    modePowerupChoices = modePowerupChoices.filter((choice) => choice !== powerup);
+  } else if (modePowerupChoices.length < 2) {
+    modePowerupChoices.push(powerup);
+  }
+  updateModePowerupSelection();
+});
+
+openGuideButton.addEventListener("click", openGuide);
+closeGuideButton.addEventListener("click", closeGuide);
 
 openMainMenuButton.addEventListener("click", openMainMenu);
 skipLevelButton.addEventListener("click", function () {
@@ -525,6 +603,171 @@ startMenu.addEventListener("animationend", function (event) {
   startMenu.classList.remove("is-starting");
   gameBoard.classList.remove("menu-dismissing");
 });
+
+function startNormalGame() {
+  currentGameMode = "normal";
+  resetGame();
+  startMenu.classList.remove("is-selecting-mode");
+  gameModeSelection.hidden = true;
+  startGameButton.disabled = true;
+  startMenu.classList.remove("is-opening");
+  gameBoard.classList.add("menu-dismissing");
+  startMenu.classList.add("is-starting");
+  gameTitle.classList.add("is-started");
+}
+
+function openModePowerupSelect(targetLevel, fromVictory) {
+  modeSelectionFromVictory = fromVictory;
+  modePowerupChoices = [];
+  modePowerupSelect.dataset.level = String(targetLevel);
+  modePowerupOptions.innerHTML = RUN_POWERUP_CHOICES.map((powerup) => {
+    const item = ITEM_DEFS[powerup];
+    const preview = powerup === "timeMachine" ? TIME_MACHINE_ICON_MARKUP : item.previewText;
+    return `<button class="powerup-choice" type="button" data-mode-powerup="${powerup}" aria-pressed="false">
+      <span class="powerup-choice-icon ${item.previewClass}" aria-hidden="true">${preview}</span>
+      <span class="powerup-choice-name">${item.name.replace(/ Powerup$/, "")}</span>
+      <span class="powerup-choice-description">${item.description}</span>
+    </button>`;
+  }).join("");
+  modePowerupSelect.hidden = false;
+  if (!fromVictory) {
+    gameModeSelection.hidden = true;
+  } else {
+    roundReward.hidden = true;
+  }
+  modePowerupOptions.querySelector("button")?.focus();
+  updateModePowerupSelection();
+}
+
+function updateModePowerupSelection() {
+  for (const button of modePowerupOptions.querySelectorAll("[data-mode-powerup]")) {
+    const selected = modePowerupChoices.includes(button.dataset.modePowerup);
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+    button.disabled = !selected && modePowerupChoices.length === 2;
+  }
+  beginImpossibleButton.disabled = modePowerupChoices.length !== 2;
+  modePowerupStatus.textContent = `Choose two different powerups (${modePowerupChoices.length}/2 selected).`;
+  beginImpossibleButton.textContent = Number(modePowerupSelect.dataset.level) === 11
+    ? "Start Level 11 (Impossible)"
+    : "Start Level 12 (Impossible²)";
+}
+
+function beginSelectedImpossibleLevel() {
+  if (modePowerupChoices.length !== 2) {
+    return;
+  }
+  currentGameMode = Number(modePowerupSelect.dataset.level) === 11 ? "impossible" : "impossibleSquared";
+  const targetLevel = currentGameMode === "impossible" ? 11 : 12;
+  clearRunPowerups();
+  for (const powerup of modePowerupChoices) {
+    activeRunPowerups[powerup] = true;
+  }
+  if (activeRunPowerups.snipe && roundLevel < 11) {
+    snipeAmmo = 1;
+  }
+  GameState.lives = targetLevel === 11 ? 5 : 3;
+  modePowerupSelect.hidden = true;
+  roundReward.hidden = true;
+  gameWon = false;
+  levelComplete = false;
+  deathScreen = false;
+  gameStarted = true;
+  startMenu.hidden = true;
+  startMenu.classList.remove("is-selecting-mode", "is-starting");
+  levelCodeBar.classList.add("is-playing");
+  gameTitle.classList.add("is-started");
+  beginLevel(targetLevel);
+  canvas.focus({ preventScroll: true });
+}
+
+function cancelModePowerupSelect() {
+  modePowerupSelect.hidden = true;
+  if (modeSelectionFromVictory) {
+    roundReward.hidden = false;
+  } else {
+    gameModeSelection.hidden = false;
+  }
+}
+
+function openGuide() {
+  hasSeenHowToPlay = true;
+  try {
+    window.localStorage.setItem(HOW_TO_PLAY_STORAGE_KEY, "true");
+  } catch (error) {
+    console.error("Could not save guide status.", error);
+  }
+  updateGuideRecommendation();
+  renderGuideItems();
+  guideMenu.hidden = false;
+  closeGuideButton.focus();
+}
+
+function closeGuide() {
+  guideMenu.hidden = true;
+  openGuideButton.focus();
+}
+
+function updateGuideRecommendation() {
+  const recommended = !hasSeenHowToPlay && !GameStats.normalGameCompleted;
+  guideRecommended.hidden = !recommended;
+  openGuideButton.classList.toggle("is-recommended", recommended);
+}
+
+function renderGuideItems() {
+  const entries = [
+    { key: "regular", name: "Regular brick", icon: "BLOCK", description: "Breaks with one hit.", unlocked: true },
+    { key: "strong", name: "Strong brick", icon: "2 HITS", description: "Takes two hits to break.", unlocked: true },
+    { key: "spike", name: "Spike brick (negative)", icon: "SPIKE", description: "Drops a spike that slows the paddle (10% in Level 11; otherwise 25%, stacking).", unlocked: GameStats.highestLevel >= 2 },
+    { key: "speedBrick", name: "Speed brick (negative)", icon: "SPEED", description: "Doubles the ball speed and sends it downward through bricks; the boost wears off after 5 seconds.", unlocked: GameStats.highestLevel >= 4 },
+    { key: "teleporter", name: "TP brick (negative)", icon: "TP", description: "Has a chance to teleport when hit; Level 12 teleporting stops after half are broken.", unlocked: GameStats.highestLevel >= 5 },
+    { key: "snipe-brick", name: "Sniper Ammo brick", icon: "AMMO", description: "Collect it for one Sniper shot. Activation: Space.", unlocked: itemInventory.snipe.count > 0 },
+    ...BRICK_ITEM_ORDER.map((key) => ({
+      key,
+      name: ITEM_DEFS[key].name,
+      icon: key === "multiball" ? "● ● ●" : ITEM_DEFS[key].previewText || key.toUpperCase(),
+      description: ITEM_DEFS[key].description,
+      unlocked: itemInventory[key].count > 0
+    })),
+    ...RUN_POWERUP_CHOICES.map((key) => ({
+      key,
+      name: ITEM_DEFS[key].name,
+      icon: ITEM_DEFS[key].previewText || key.toUpperCase(),
+      description: `${ITEM_DEFS[key].description}${key === "snipe" ? " Activation: Space." : key === "timeMachine" ? " Activation: P." : key === "machineGun" ? " Activation: F." : ""}`,
+      unlocked: itemInventory[key].count > 0
+    })),
+    { key: "extra-life", name: "Extra Life", icon: "+1", description: "Choose it after a level to gain one life.", unlocked: true }
+  ];
+  const icons = {
+    regular: "■",
+    strong: "▤",
+    spike: "▲",
+    speedBrick: "⇩",
+    teleporter: "TP",
+    "snipe-brick": "AMMO",
+    multiball: "●●●",
+    pentaball: "10●",
+    explosive: "✹",
+    laser: "✳",
+    debris: "▦",
+    snipe: "AMMO",
+    paddle: "↔",
+    timeMachine: TIME_MACHINE_ICON_MARKUP,
+    magnet: "∩",
+    machineGun: "•••",
+    doublePaddle: "▁▁",
+    "extra-life": "+1"
+  };
+  guideItems.innerHTML = entries.filter((entry) => entry.unlocked).map((entry) => {
+    const style = POWERUP_STYLES[entry.key === "snipe-brick" ? "snipe" : entry.key]
+      || (entry.key === "strong"
+        ? { color: "#b8b8b8", darkerColor: "#333" }
+        : entry.key === "regular"
+          ? { color: "#fff", darkerColor: "#111" }
+          : { color: "#f05a70", darkerColor: "#8d1c30" });
+    return `<div class="guide-item"><span class="guide-icon" style="background:${style.color};color:${style.darkerColor}" aria-hidden="true">${icons[entry.key] || entry.icon}</span><p><strong>${entry.name}:</strong> ${entry.description}</p></div>`;
+  }).join("");
+}
 
 document.addEventListener("keyup", function (event) {
   keys[event.key.toLowerCase()] = false;
@@ -629,7 +872,7 @@ function triggerShake(strength) {
 }
 
 function update() {
-  if (shopOpen || settingsOpen || statsOpen) {
+  if (shopOpen || settingsOpen || statsOpen || !guideMenu.hidden) {
     return;
   }
   if (performance.now() < timeMachineSlowUntil) {
@@ -707,25 +950,35 @@ function update() {
     brickCombo = 0;
     lastComboDisplayValue = 0;
   }
+  const fallenBalls = balls.filter((ball) => ball.y > HEIGHT);
   balls = balls.filter((ball) => ball.y <= HEIGHT);
   if (balls.length === 0) {
-    const lostHeartIndex = GameState.lives - 1;
+    const lastFallenBall = fallenBalls[fallenBalls.length - 1];
+    if (lastFallenBall) {
+      lastFallenBall.y = HEIGHT - lastFallenBall.height;
+      balls.push(lastFallenBall);
+    }
     if (GameState.lives > 0) {
+      const position = getLifeHeartPosition(GameState.lives - 1);
       fallingHearts.push({
-        x: WIDTH - 16 - 18 - lostHeartIndex * 26,
-        y: HEIGHT - 55,
+        ...position,
         vx: 1.2,
         vy: -2.5,
         rotation: 0,
         spin: 0.08,
-        age: 0
+        age: 0,
+        reverse: false,
+        gravity: 0.18
       });
     }
     GameState.lives = Math.max(0, GameState.lives - 1);
+    fallingHearts = fallingHearts.filter((heart) => (
+      !heart.reverse || heart.targetIndex < GameState.lives
+    ));
     if (GameState.lives === 0) {
       clearRunPowerups();
     }
-    resetBall();
+    ballLaunched = false;
     deathScreen = true;
     updateAdminVisibility();
   }
@@ -736,7 +989,6 @@ function update() {
     levelCompleteFadeFrame = 0;
     resetPaddleSlow();
     clearRunPowerups();
-    resetBall();
     updateAdminVisibility();
     showRoundReward();
   }
@@ -801,6 +1053,9 @@ function resetGame() {
   roundRewardRevealTimeout = null;
   clearRunPowerups();
   level = 1;
+  currentGameMode = "normal";
+  teleportBricksAtStart = 0;
+  teleportBricksBroken = 0;
   bricks = makeBricksForRound(level);
   particles = [];
   explosions = [];
@@ -858,7 +1113,7 @@ function beginLevel(nextLevel) {
     ? { x: 0, y: paddle.y, width: PADDLE_BASE_WIDTH, height: paddle.height }
     : null;
   if (doublePaddle) {
-    paddle.x = (WIDTH - paddle.width - DOUBLE_PADDLE_GAP - doublePaddle.width) / 2;
+    paddle.x = (WIDTH - paddle.width) / 2;
     syncDoublePaddle();
   }
   if (level > GameStats.highestLevel) {
@@ -870,6 +1125,8 @@ function beginLevel(nextLevel) {
   lastComboDisplayValue = 0;
   resetPaddleSlow();
   bricks = makeBricksForRound(level);
+  teleportBricksAtStart = bricks.filter((brick) => brick.special === "teleporter").length;
+  teleportBricksBroken = 0;
   explosions = [];
   for (const brick of bricks) {
     brick.targetY = brick.y;
@@ -899,19 +1156,49 @@ function chooseRunPowerup(powerup) {
   if (
     !levelComplete ||
     gameWon ||
-    !RUN_POWERUP_CHOICES.includes(powerup) ||
-    itemInventory[powerup].count === 0 ||
-    !itemInventory[powerup].equipped
+    (powerup !== "heart" && !RUN_POWERUP_CHOICES.includes(powerup)) ||
+    !roundRewardPowerupChoices.includes(powerup)
   ) {
     return;
   }
   clearRunPowerups();
-  activeRunPowerups[powerup] = true;
+  if (powerup === "heart") {
+    GameState.lives += 1;
+    spawnLifeGainAnimation();
+  } else {
+    activeRunPowerups[powerup] = true;
+  }
   if (powerup === "snipe") {
     snipeAmmo += 1;
   }
-  soloRoundPowerup = null;
   nextRound();
+}
+
+function getLifeHeartPosition(index) {
+  return {
+    x: WIDTH - 16 - 22 - index * 28,
+    y: HEIGHT - 55
+  };
+}
+
+function spawnLifeGainAnimation() {
+  const duration = 90;
+  const initialXVelocity = 1.2;
+  const initialYVelocity = -2.5;
+  const gravity = 0.18;
+  const position = getLifeHeartPosition(GameState.lives - 1);
+  fallingHearts.push({
+    x: position.x + initialXVelocity * duration,
+    y: position.y + initialYVelocity * duration + gravity * duration * (duration - 1) / 2,
+    vx: -initialXVelocity,
+    vy: -(initialYVelocity + gravity * (duration - 1)),
+    rotation: 0.08 * duration,
+    spin: -0.08,
+    age: 0,
+    reverse: true,
+    targetIndex: GameState.lives - 1,
+    gravity
+  });
 }
 
 function clearRunPowerups() {
@@ -926,7 +1213,7 @@ function clearRunPowerups() {
   machineGunBullets = [];
   doublePaddle = null;
   laserBeams = [];
-  soloRoundPowerup = null;
+  roundRewardPowerupChoices = [];
   targetPaddleWidth = PADDLE_BASE_WIDTH;
   if (typeof paddle !== "undefined") {
     paddle.width = PADDLE_BASE_WIDTH;
@@ -939,7 +1226,7 @@ function clearRunPowerups() {
 function showRoundReward() {
   clearTimeout(roundRewardRevealTimeout);
   roundRewardRevealTimeout = null;
-  soloRoundPowerup = null;
+  roundRewardPowerupChoices = [];
   roundReward.classList.remove("is-revealing");
   roundReward.hidden = true;
   roundRewardRoundTitle.hidden = false;
@@ -948,8 +1235,10 @@ function showRoundReward() {
   roundRewardShopHint.hidden = gameWon;
   finishRunButton.hidden = !gameWon;
   returnToMenuButton.hidden = !gameWon;
+  tryImpossibleOption.hidden = true;
+  tryImpossibleSquaredOption.hidden = true;
 
-  if (level === 10) {
+  if (level === 10 && currentGameMode === "normal") {
     gameWon = true;
     roundRewardRoundTitle.hidden = true;
     roundRewardShopHint.hidden = true;
@@ -962,24 +1251,44 @@ function showRoundReward() {
     roundRewardDetails.textContent = `Level 10 complete! +${creditsEarnedThisLevel} credits total, including the +${finalReward} bonus.`;
     roundRewardOptions.hidden = true;
     roundRewardActions.hidden = false;
+    tryImpossibleOption.hidden = false;
+    tryImpossibleSquaredOption.hidden = false;
+    GameStats.normalGameCompleted = true;
+    persistShopProgress();
+    updateGuideRecommendation();
+    scheduleRoundRewardReveal();
+    return;
+  }
+
+  if (level === 11 || level === 12) {
+    gameWon = true;
+    roundRewardRoundTitle.hidden = true;
+    roundRewardShopHint.hidden = true;
+    roundRewardTitle.textContent = level === 11 ? "Impossible beaten!" : "Impossible² beaten!";
+    const reward = level === 11 ? 5000 : 100000;
+    addCredits(reward);
+    creditsEarnedThisLevel += reward;
+    if (level === 12) {
+      GameStats.rainbowUnlocked = true;
+      incrementImpossibleSquaredWins();
+    }
+    roundRewardDetails.textContent = `Level ${level} complete! +${reward.toLocaleString()} credits${level === 12 ? " and permanent Rainbow Paddle & Ball unlocked." : "."}`;
+    roundRewardOptions.hidden = true;
+    roundRewardActions.hidden = false;
+    updateShopDisplay();
+    persistShopProgress();
     scheduleRoundRewardReveal();
     return;
   }
 
   roundRewardRoundTitle.hidden = false;
   roundRewardRoundTitle.textContent = `Round ${level} completed`;
-  const choices = updateRoundRewardChoices();
+  updateRoundRewardChoices();
   roundRewardDetails.textContent = `Credits: +${creditsEarnedThisLevel}`;
-  if (choices.length === 1) {
-    soloRoundPowerup = choices[0];
-    roundReward.hidden = true;
-    canvas.focus({ preventScroll: true });
-  } else {
-    roundRewardTitle.textContent = "Pick a power up";
-    roundRewardOptions.hidden = false;
-    roundRewardActions.hidden = true;
-    scheduleRoundRewardReveal();
-  }
+  roundRewardTitle.textContent = "Pick a power up";
+  roundRewardOptions.hidden = false;
+  roundRewardActions.hidden = true;
+  scheduleRoundRewardReveal();
 }
 
 function scheduleRoundRewardReveal() {
@@ -1002,15 +1311,32 @@ function scheduleRoundRewardReveal() {
 }
 
 function updateRoundRewardChoices() {
-  const choices = [];
-  for (const button of roundRewardOptions.querySelectorAll("[data-run-powerup]")) {
+  const buttons = [...roundRewardOptions.querySelectorAll("[data-run-powerup]")];
+  const ownedPowerups = [];
+  for (const button of buttons) {
     const powerup = button.dataset.runPowerup;
-    button.hidden = itemInventory[powerup].count === 0 || !itemInventory[powerup].equipped;
+    button.hidden = powerup === "heart"
+      ? false
+      : itemInventory[powerup].count === 0 || !itemInventory[powerup].equipped;
     if (!button.hidden) {
-      choices.push(powerup);
+      if (powerup !== "heart") {
+        ownedPowerups.push(powerup);
+      }
     }
   }
-  return choices;
+  for (let index = ownedPowerups.length - 1; index > 0; index--) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [ownedPowerups[index], ownedPowerups[swapIndex]] = [
+      ownedPowerups[swapIndex],
+      ownedPowerups[index]
+    ];
+  }
+  roundRewardPowerupChoices = [...ownedPowerups.slice(0, 2), "heart"];
+  const availablePowerups = new Set(roundRewardPowerupChoices);
+  for (const button of buttons) {
+    button.hidden = !availablePowerups.has(button.dataset.runPowerup);
+  }
+  return roundRewardPowerupChoices;
 }
 
 function updateLevelTransition() {
@@ -1043,12 +1369,21 @@ function updateLevelTransition() {
 function updateParticles() {
   for (let index = particles.length - 1; index >= 0; index--) {
     const particle = particles[index];
-    particle.x += particle.vx * 0.8;
-    particle.y += particle.vy * 0.8;
-    particle.vy += 0.08;
+    if (particle.debris) {
+      particle.y += particle.vy;
+      for (const brick of [...bricks]) {
+        if (!brick.pendingDestroy && boxesTouch(particle, brick)) {
+          destroyBrick(brick, false, true);
+        }
+      }
+    } else {
+      particle.x += particle.vx * 0.8;
+      particle.y += particle.vy * 0.8;
+      particle.vy += 0.08;
+    }
     particle.life -= 1;
 
-    if (particle.life <= 0) {
+    if (particle.life <= 0 || (particle.debris && particle.y > HEIGHT)) {
       particles.splice(index, 1);
     }
   }
@@ -1059,11 +1394,11 @@ function updateFallingHearts() {
     const heart = fallingHearts[index];
     heart.x += heart.vx;
     heart.y += heart.vy;
-    heart.vy += 0.18;
+    heart.vy += heart.gravity;
     heart.rotation += heart.spin;
     heart.age += 1;
 
-    if (heart.y > HEIGHT || heart.age > 90) {
+    if ((!heart.reverse && heart.y > HEIGHT) || heart.age > 90) {
       fallingHearts.splice(index, 1);
     }
   }
@@ -1073,6 +1408,7 @@ function resetPaddleSlow() {
   paddleSlowed = false;
   paddle.speed = PADDLE_SPEED;
   paddleSlowUntil = 0;
+  paddleSlowStacks = 0;
 }
 
 function updatePaddleHitTexts() {
@@ -1156,6 +1492,16 @@ function startComboReward(amount) {
   });
 }
 
+function incrementImpossibleSquaredWins() {
+  impossibleSquaredWins = Math.min(Number.MAX_SAFE_INTEGER, impossibleSquaredWins + 1);
+  try {
+    window.localStorage.setItem(IMPOSSIBLE_2_WINS_STORAGE_KEY, String(impossibleSquaredWins));
+  } catch (error) {
+    console.error("Could not save the Impossible² win counter.", error);
+  }
+  updateStatsDisplay();
+}
+
 function updateFallingPowerups() {
   for (let index = fallingPowerups.length - 1; index >= 0; index--) {
     const powerup = fallingPowerups[index];
@@ -1191,8 +1537,6 @@ function updateFallingPowerups() {
             vy: velocity.vy
           });
         }
-      } else if (powerup.type === "heart") {
-        GameState.lives += 1;
       } else if (powerup.type === "snipe") {
         snipeAmmo += 1;
       }
@@ -1236,7 +1580,7 @@ function updateSnipeBeams() {
 }
 
 function startMachineGun() {
-  if (machineGunUsed) {
+  if (machineGunUsed || !ballLaunched) {
     return;
   }
   machineGunUsed = true;
@@ -1298,13 +1642,16 @@ function updateFallingSpikes() {
 
     if (boxesTouch(spike, paddle) || (doublePaddle && boxesTouch(spike, doublePaddle))) {
       paddleSlowed = true;
-      paddle.speed = PADDLE_SPEED * 0.75;
+      paddleSlowStacks += 1;
+      const slowMultiplier = level === 11 ? 0.9 : 0.75;
+      paddle.speed = PADDLE_SPEED * slowMultiplier ** paddleSlowStacks;
       paddleSlowUntil = performance.now() + PADDLE_SLOW_DURATION;
       paddleHitTexts.push({
         x: paddle.x + paddle.width / 2,
         y: paddle.y - 6,
         life: 60,
-        maxLife: 60
+        maxLife: 60,
+        slowPercent: level === 11 ? 10 : 25
       });
       fallingSpikes.splice(index, 1);
     } else if (spike.y > HEIGHT) {
@@ -1349,7 +1696,6 @@ function onBrickDestroyed(brick, suppressSpecialEffects = false) {
   if (
     brick.special === "multiball" ||
     brick.special === "pentaball" ||
-    brick.special === "heart" ||
     brick.special === "snipe"
   ) {
     const powerupWidth = brick.special === "snipe" ? 34 : 20;
@@ -1370,6 +1716,8 @@ function onBrickDestroyed(brick, suppressSpecialEffects = false) {
       vy: 4,
       hitBricks: new Set()
     });
+  } else if (brick.special === "teleporter" && currentGameMode === "impossibleSquared") {
+    teleportBricksBroken += 1;
   }
 
   if (!suppressSpecialEffects) {
@@ -1377,8 +1725,6 @@ function onBrickDestroyed(brick, suppressSpecialEffects = false) {
       explodeBricksAround(brick);
     } else if (brick.special === "laser") {
       fireLaserBrick(brick);
-    } else if (brick.special === "debris") {
-      breakBricksBelow(brick);
     }
   }
 }
@@ -1412,10 +1758,13 @@ function breakBricksBelow(sourceBrick) {
 }
 
 function tryTeleportBrick(brick) {
-  if (Math.random() >= 0.5) {
+  if (currentGameMode === "impossibleSquared") {
+    if (teleportBricksBroken * 2 >= teleportBricksAtStart || Math.random() >= 2 / 3) {
+      return false;
+    }
+  } else if (Math.random() >= 0.5) {
     return false;
   }
-
   const rows = brick.gridRowCount;
   const occupiedSlots = new Set(bricks.map((candidate) => `${candidate.gridRow}:${candidate.gridColumn}`));
   const openSlots = [];
@@ -1511,8 +1860,8 @@ function syncDoublePaddle() {
   if (!doublePaddle) {
     return;
   }
-  doublePaddle.x = paddle.x + paddle.width + DOUBLE_PADDLE_GAP;
-  doublePaddle.y = paddle.y;
+  doublePaddle.x = paddle.x + (paddle.width - doublePaddle.width) / 2;
+  doublePaddle.y = paddle.y + paddle.height + DOUBLE_PADDLE_GAP;
 }
 
 function movePaddle() {
@@ -1529,9 +1878,8 @@ function movePaddle() {
   if (paddle.x < 0) {
     paddle.x = 0;
   }
-  const paddleGroupWidth = paddle.width + (doublePaddle ? DOUBLE_PADDLE_GAP + doublePaddle.width : 0);
-  if (paddle.x + paddleGroupWidth > WIDTH) {
-    paddle.x = WIDTH - paddleGroupWidth;
+  if (paddle.x + paddle.width > WIDTH) {
+    paddle.x = WIDTH - paddle.width;
   }
   syncDoublePaddle();
 
@@ -1555,6 +1903,17 @@ function updatePaddleTrail() {
 }
 
 function moveBall(ball) {
+  if (ball.speedBrickBoostUntil && performance.now() >= ball.speedBrickBoostUntil) {
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const baseSpeed = ball.speedBrickBaseSpeed || BALL_SPEED;
+    if (speed > 0) {
+      ball.vx *= baseSpeed / speed;
+      ball.vy *= baseSpeed / speed;
+    }
+    ball.speedBrickBoostUntil = 0;
+    ball.speedBrickBaseSpeed = 0;
+    ball.piercingDownUntilPaddle = false;
+  }
   if (ballLaunched) {
     applyMagnetToBall(ball);
     ball.vy = ball.vy + BALL_GRAVITY;
@@ -1572,6 +1931,9 @@ function applyMagnetToBall(ball) {
   }
   const ballCenterX = ball.x + ball.width / 2;
   const ballCenterY = ball.y + ball.height / 2;
+  if (ballCenterY <= HEIGHT / 2) {
+    return;
+  }
   const targets = doublePaddle ? [paddle, doublePaddle] : [paddle];
   const target = targets.reduce((nearest, candidate) => (
     Math.abs(candidate.x + candidate.width / 2 - ballCenterX) <
@@ -1581,14 +1943,18 @@ function applyMagnetToBall(ball) {
   ));
   const dx = target.x + target.width / 2 - ballCenterX;
   const dy = target.y - ballCenterY;
-  const distance = Math.hypot(dx, dy);
-  if (dy <= 0 || distance > MAGNET_RANGE || distance === 0) {
+  if (ball.vy <= 0 || dy <= 0 || Math.abs(dx) > MAGNET_RANGE || dx === 0) {
     return;
   }
 
   const speed = Math.hypot(ball.vx, ball.vy) || BALL_SPEED;
-  ball.vx += (dx / distance * speed - ball.vx) * MAGNET_STRENGTH;
-  ball.vy += (dy / distance * speed - ball.vy) * MAGNET_STRENGTH;
+  const pullStrength = Math.min(1, (ballCenterY - HEIGHT / 2) / (target.y - HEIGHT / 2));
+  ball.vx += Math.sign(dx) * speed * MAGNET_STRENGTH * pullStrength;
+  const pulledSpeed = Math.hypot(ball.vx, ball.vy);
+  if (pulledSpeed > 0) {
+    ball.vx *= speed / pulledSpeed;
+    ball.vy *= speed / pulledSpeed;
+  }
 }
 
 function updateBallTrail(ball, moving = ballLaunched) {
@@ -1632,12 +1998,19 @@ function draw() {
   }
 
   drawPaddleTrail();
-  ctx.fillStyle = paddleSlowed ? "#ef4545" : "white";
-  ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
   if (doublePaddle) {
     ctx.fillStyle = "#46b5dc";
     ctx.fillRect(doublePaddle.x, doublePaddle.y, doublePaddle.width, doublePaddle.height);
   }
+  ctx.fillStyle = GameStats.rainbowUnlocked
+    ? `hsl(${(performance.now() / 3) % 360}, 100%, 60%)`
+    : paddleSlowed ? "#ef4545" : "white";
+  if (doublePaddle) {
+    ctx.shadowColor = "#8beaff";
+    ctx.shadowBlur = 12 + Math.sin(performance.now() / 100) * 4;
+  }
+  ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+  ctx.shadowBlur = 0;
   if (paddleHitFlashFrames > 0) {
     const progress = 1 - paddleHitFlashFrames / 8;
     const radius = 8 + progress * 24;
@@ -1651,24 +2024,24 @@ function draw() {
     ctx.arc(paddleHitFlashX, centerY, radius, 0, Math.PI * 2);
     ctx.fill();
   }
-  if (!deathScreen && !levelComplete) {
-    for (const ball of balls) {
-      drawBallTrail(ball);
-      const squishProgress = (ball.squish || 0) / BALL_SQUISH_FRAMES;
-      const squish = squishProgress * squishProgress * (3 - 2 * squishProgress);
-      ctx.fillStyle = paddleSlowed ? "#ef4545" : "white";
-      ctx.beginPath();
-      ctx.ellipse(
-        ball.x + ball.width / 2,
-        ball.y + ball.height / 2,
-        ball.width / 2 * (1 + 0.18 * squish),
-        ball.height / 2 * (1 - 0.18 * squish),
-        0,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
+  for (const ball of balls) {
+    drawBallTrail(ball);
+    const squishProgress = (ball.squish || 0) / BALL_SQUISH_FRAMES;
+    const squish = squishProgress * squishProgress * (3 - 2 * squishProgress);
+    ctx.fillStyle = GameStats.rainbowUnlocked
+      ? `hsl(${(performance.now() / 3 + ball.x) % 360}, 100%, 60%)`
+      : paddleSlowed ? "#ef4545" : "white";
+    ctx.beginPath();
+    ctx.ellipse(
+      ball.x + ball.width / 2,
+      ball.y + ball.height / 2,
+      ball.width / 2 * (1 + 0.18 * squish),
+      ball.height / 2 * (1 - 0.18 * squish),
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
   }
 
   drawBricks();  // bricks.js
@@ -1697,14 +2070,16 @@ function drawPaddleTrail() {
     return;
   }
   ctx.save();
-  ctx.fillStyle = paddleSlowed ? "#ff7777" : "#b8e9ff";
+  ctx.fillStyle = GameStats.rainbowUnlocked
+    ? `hsl(${(performance.now() / 3) % 360}, 100%, 60%)`
+    : paddleSlowed ? "#ff7777" : "#b8e9ff";
   for (const point of paddleTrail) {
     ctx.globalAlpha = point.life / PADDLE_TRAIL_LIFE * 0.3;
     ctx.fillRect(point.x, paddle.y, paddle.width, paddle.height);
   }
   ctx.restore();
 }
-if (activeRunPowerups.machineGun && !machineGunUsed && !levelComplete && !deathScreen) {
+if (activeRunPowerups.machineGun && ballLaunched && !machineGunUsed && !levelComplete && !deathScreen) {
   ctx.save();
   ctx.fillStyle = "#fff2a1";
   ctx.font = "14px 'Fredoka One', cursive";
@@ -1821,7 +2196,11 @@ function drawHud() {
   const blocksLabel = `Blocks broken: ${GameState.blocksBroken}`;
   ctx.fillText(blocksLabel, 16, 14);
 
-  const levelLabel = `Level: ${level}`;
+  const difficulty = level <= 2 ? "Easy"
+    : level <= 6 ? "Medium"
+      : level <= 10 ? "Hard"
+        : level === 11 ? "Impossible" : "Impossible²";
+  const levelLabel = `Level: ${level}/${level === 11 ? 11 : level === 12 ? 12 : 10} (${difficulty})`;
   const ammoLabel = `Ammo: ${snipeAmmo}`;
   ctx.font = "18px 'Fredoka One', cursive";
   const levelWidth = ctx.measureText(levelLabel).width;
@@ -1885,22 +2264,27 @@ function drawHud() {
   const heartWidth = 22;
   const heartHeight = 20;
   for (let index = 0; index < GameState.lives; index++) {
-    const x = WIDTH - 16 - heartWidth - index * 28;
-    drawHeart(x, HEIGHT - 55, heartWidth, heartHeight);
+    if (fallingHearts.some((heart) => heart.reverse && heart.targetIndex === index)) {
+      continue;
+    }
+    const position = getLifeHeartPosition(index);
+    drawHeart(position.x, position.y, heartWidth, heartHeight);
   }
 
   for (const heart of fallingHearts) {
     ctx.save();
     ctx.translate(heart.x + heartWidth / 2, heart.y + heartHeight / 2);
     ctx.rotate(heart.rotation);
-    ctx.globalAlpha = Math.max(0, 1 - heart.age / 90);
-    drawHeart(-heartWidth / 2, -heartHeight / 2, heartWidth, heartHeight);
+    ctx.globalAlpha = Math.max(0, heart.reverse ? heart.age / 90 : 1 - heart.age / 90);
+    ctx.shadowColor = "#ff2c55";
+    ctx.shadowBlur = 12;
+    drawHeart(-heartWidth / 2, -heartHeight / 2, heartWidth, heartHeight, false);
     ctx.restore();
   }
   ctx.globalAlpha = 1;
 }
 
-function drawHeart(x, y, width, height) {
+function drawHeart(x, y, width, height, outline = true) {
   ctx.fillStyle = "red";
   ctx.beginPath();
   ctx.moveTo(x + width / 2, y + height);
@@ -1909,15 +2293,20 @@ function drawHeart(x, y, width, height) {
   ctx.bezierCurveTo(x + width * 0.62, y - height * 0.06, x + width, y + height * 0.02, x + width, y + height * 0.31);
   ctx.bezierCurveTo(x + width, y + height * 0.56, x + width * 0.68, y + height * 0.82, x + width / 2, y + height);
   ctx.fill();
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  if (outline) {
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
 }
 
 function drawFallingPowerups() {
   for (const powerup of fallingPowerups) {
     const centerX = powerup.x + powerup.width / 2;
     const centerY = powerup.y + powerup.height / 2;
+    ctx.save();
+    ctx.shadowColor = POWERUP_STYLES[powerup.type].color;
+    ctx.shadowBlur = 12;
     if (powerup.type === "multiball") {
       ctx.fillStyle = "#35d06f";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -1930,14 +2319,6 @@ function drawFallingPowerups() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("10", centerX, centerY);
-    } else if (powerup.type === "heart") {
-      ctx.fillStyle = "#f05a70";
-      ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
-      ctx.fillStyle = "white";
-      ctx.font = "18px 'Fredoka One', cursive";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("+", centerX, centerY);
     } else if (powerup.type === "paddle") {
       ctx.fillStyle = "#a66bff";
       ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
@@ -1962,6 +2343,7 @@ function drawFallingPowerups() {
       ctx.closePath();
       ctx.fill();
     }
+    ctx.restore();
   }
 }
 
@@ -2078,16 +2460,17 @@ function drawMachineGunBullets() {
 
 function drawFallingSpikes() {
   for (const spike of fallingSpikes) {
+    ctx.save();
     ctx.fillStyle = "#ef4545";
+    ctx.shadowColor = "#ef4545";
+    ctx.shadowBlur = 12;
     ctx.beginPath();
     ctx.moveTo(spike.x, spike.y);
     ctx.lineTo(spike.x + spike.width, spike.y);
     ctx.lineTo(spike.x + spike.width / 2, spike.y + spike.height);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "white";
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx.restore();
   }
 }
 
@@ -2099,7 +2482,7 @@ function drawPaddleHitTexts() {
   ctx.textBaseline = "bottom";
   for (const text of paddleHitTexts) {
     ctx.globalAlpha = text.life / text.maxLife;
-    ctx.fillText("-25% speed", text.x, text.y);
+    ctx.fillText(`-${text.slowPercent ?? (level === 11 ? 10 : 25)}% speed`, text.x, text.y);
   }
   ctx.restore();
 }
@@ -2111,7 +2494,7 @@ function drawDeathScreen() {
   ctx.fillStyle = "white";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "34px 'Fredoka One', cursive";
+  ctx.font = "68px 'Fredoka One', cursive";
   ctx.fillText("You died!", WIDTH / 2, HEIGHT / 2 - 42);
   ctx.font = "20px 'Fredoka One', cursive";
   ctx.fillText(`Blocks broken: ${GameState.blocksBroken}`, WIDTH / 2, HEIGHT / 2 + 2);
@@ -2120,22 +2503,6 @@ function drawDeathScreen() {
 }
 
 function drawLevelComplete() {
-  if (soloRoundPowerup) {
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "42px 'Fredoka One', cursive";
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "black";
-    ctx.fillStyle = "white";
-    ctx.strokeText("YOU WON!", WIDTH / 2, HEIGHT / 2 - 12);
-    ctx.fillText("YOU WON!", WIDTH / 2, HEIGHT / 2 - 12);
-    ctx.font = "18px 'Fredoka One', cursive";
-    ctx.strokeText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 30);
-    ctx.fillText("Press Enter to continue", WIDTH / 2, HEIGHT / 2 + 30);
-    ctx.restore();
-    return;
-  }
   ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * levelCompleteFadeFrame / LEVEL_COMPLETE_FADE_FRAMES})`;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 }
@@ -2203,7 +2570,8 @@ function loadShopProgress() {
     const itemInventoryState = createDefaultItemInventory();
     const savedItems = saved.itemInventory && typeof saved.itemInventory === "object" ? saved.itemInventory : {};
     const savedStats = saved.stats && typeof saved.stats === "object" ? saved.stats : {};
-    const stats = createDefaultStats(Number.isSafeInteger(saved.credits) && saved.credits >= 0 ? saved.credits : 0);
+    const credits = Number.isSafeInteger(saved.credits) && saved.credits >= 0 ? saved.credits : 500;
+    const stats = createDefaultStats(credits);
 
     for (const itemKey of ITEM_ORDER) {
       const savedItem = savedItems[itemKey] && typeof savedItems[itemKey] === "object" ? savedItems[itemKey] : {};
@@ -2216,6 +2584,12 @@ function loadShopProgress() {
       itemInventoryState[itemKey].count = Math.max(0, savedCount || (savedOwned ? 1 : 0));
       itemInventoryState[itemKey].equipped = (savedItem.equipped === true || legacyEquipped === true) && itemInventoryState[itemKey].count > 0;
     }
+    let equippedBrickCount = 0;
+    for (const itemKey of BRICK_ITEM_ORDER) {
+      if (itemInventoryState[itemKey].equipped && ++equippedBrickCount > 3) {
+        itemInventoryState[itemKey].equipped = false;
+      }
+    }
     if (itemInventoryState.multiball.count === 0) {
       itemInventoryState.multiball.count = 1;
       itemInventoryState.multiball.equipped = true;
@@ -2224,22 +2598,17 @@ function loadShopProgress() {
       itemInventoryState.paddle.count = 1;
       itemInventoryState.paddle.equipped = true;
     }
-    if (!SHOP_ITEM_ORDER.powerups.some((itemKey) => itemInventoryState[itemKey].equipped)) {
-      const fallbackPowerup = SHOP_ITEM_ORDER.powerups.find((itemKey) => itemInventoryState[itemKey].count > 0);
-      if (fallbackPowerup) {
-        itemInventoryState[fallbackPowerup].equipped = true;
-      }
-    }
-
     for (const key of ["highestCombo", "mostMoney", "totalMoney", "chestsOpened", "highestLevel"]) {
       if (Number.isSafeInteger(savedStats[key]) && savedStats[key] >= (key === "highestLevel" ? 1 : 0)) {
         stats[key] = savedStats[key];
       }
     }
-    stats.mostMoney = Math.max(stats.mostMoney, Number.isSafeInteger(saved.credits) ? saved.credits : 0);
+    stats.normalGameCompleted = savedStats.normalGameCompleted === true;
+    stats.rainbowUnlocked = savedStats.rainbowUnlocked === true;
+    stats.mostMoney = Math.max(stats.mostMoney, credits);
 
     return {
-      credits: Number.isSafeInteger(saved.credits) && saved.credits >= 0 ? saved.credits : 0,
+      credits,
       itemInventory: itemInventoryState,
       stats,
       adminUnlocked: saved.adminUnlocked === true
@@ -2248,9 +2617,9 @@ function loadShopProgress() {
     console.error("Could not load saved shop progress.", error);
     shopStorageError = true;
     return {
-      credits: 0,
+      credits: 500,
       itemInventory: createDefaultItemInventory(),
-      stats: createDefaultStats(),
+      stats: createDefaultStats(500),
       adminUnlocked: false
     };
   }
@@ -2319,6 +2688,7 @@ function updateStatsDisplay() {
   statTotalMoney.textContent = formatCredits(GameStats.totalMoney);
   statChestsOpened.textContent = GameStats.chestsOpened.toLocaleString();
   statHighestLevel.textContent = GameStats.highestLevel.toLocaleString();
+  statImpossibleSquaredWins.textContent = impossibleSquaredWins.toLocaleString();
 }
 
 function addCredits(amount) {
@@ -2358,32 +2728,38 @@ function makeBricksForRound(roundLevel) {
   const roundBricks = makeBricks(roundLevel);
   equippedBrickOriginals = new Map();
   if (activeRunPowerups.snipe) {
-    const sniperAmmoBrickCount = Math.floor(Math.random() * 3) + 1;
+    const sniperAmmoBrickCount = Math.floor(Math.random() * 2) + 1;
     addEquippedBricks(roundBricks, "snipe", sniperAmmoBrickCount);
   }
+  const replaceExistingSpecials = roundLevel >= 11;
   if (itemInventory.multiball.equipped) {
     const multiballBrickCount = Math.floor(Math.random() * 4) + 1;
-    addEquippedBricks(roundBricks, "multiball", multiballBrickCount);
+    addEquippedBricks(roundBricks, "multiball", multiballBrickCount, replaceExistingSpecials);
   }
   if (itemInventory.pentaball.equipped) {
-    addEquippedBricks(roundBricks, "pentaball");
+    addEquippedBricks(roundBricks, "pentaball", 1, replaceExistingSpecials);
   }
   if (itemInventory.explosive.equipped) {
     const explosiveBrickCount = Math.floor(Math.random() * 2) + 1;
-    addEquippedBricks(roundBricks, "explosive", explosiveBrickCount);
+    addEquippedBricks(roundBricks, "explosive", explosiveBrickCount, replaceExistingSpecials);
   }
   if (itemInventory.laser.equipped) {
-    addEquippedBricks(roundBricks, "laser");
+    addEquippedBricks(roundBricks, "laser", 1, replaceExistingSpecials);
   }
   if (itemInventory.debris.equipped) {
-    addEquippedBricks(roundBricks, "debris");
+    addEquippedBricks(roundBricks, "debris", 1, replaceExistingSpecials);
   }
   return roundBricks;
 }
 
-function addEquippedBricks(roundBricks, special, count = 1) {
+function addEquippedBricks(roundBricks, special, count = 1, replaceSpecials = false) {
   const style = POWERUP_STYLES[special];
-  const availableBricks = roundBricks.filter((brick) => !brick.special);
+  const alreadyEquipped = new Set(
+    [...equippedBrickOriginals.values()].flat().map((entry) => entry.brick)
+  );
+  const availableBricks = roundBricks.filter((brick) => (
+    !alreadyEquipped.has(brick) && (replaceSpecials || !brick.special)
+  ));
   const originals = equippedBrickOriginals.get(special) || [];
   const addCount = Math.min(count, availableBricks.length);
 
@@ -2394,7 +2770,8 @@ function addEquippedBricks(roundBricks, special, count = 1) {
       brick,
       color: brick.color,
       darkerColor: brick.darkerColor,
-      hitstillbroken: brick.hitstillbroken
+      hitstillbroken: brick.hitstillbroken,
+      special: brick.special
     });
     brick.special = special;
     brick.color = style.color;
@@ -2412,8 +2789,8 @@ function removeEquippedBrick(special) {
     return;
   }
 
-  for (const { brick, color, darkerColor, hitstillbroken } of originals) {
-    brick.special = null;
+  for (const { brick, color, darkerColor, hitstillbroken, special: originalSpecial } of originals) {
+    brick.special = originalSpecial;
     brick.color = color;
     brick.darkerColor = darkerColor;
     brick.hitstillbroken = hitstillbroken;
@@ -2462,7 +2839,7 @@ function createChestTrack(winningItemKey, category) {
   const track = [];
   const weights = CHEST_DROP_WEIGHTS[category];
 
-  for (const itemKey of SHOP_ITEM_ORDER[category]) {
+  for (const itemKey of getShopItemOrder(category)) {
     for (let count = 0; count < weights[itemKey]; count++) {
       track.push(itemKey);
     }
@@ -2597,11 +2974,6 @@ function drawChestBrickIcon(revealCtx, itemKey, x, y, width, height) {
     revealCtx.textAlign = "center";
     revealCtx.textBaseline = "middle";
     revealCtx.fillText("PENTA", centerX, centerY);
-  } else if (itemKey === "heart") {
-    revealCtx.font = "22px 'Fredoka One', cursive";
-    revealCtx.textAlign = "center";
-    revealCtx.textBaseline = "middle";
-    revealCtx.fillText("+", centerX, centerY);
   } else if (itemKey === "spike") {
     revealCtx.beginPath();
     revealCtx.moveTo(centerX, centerY - height * 0.3);
@@ -2812,6 +3184,10 @@ function openMainMenu() {
   shopMenu.hidden = true;
   settingsMenu.hidden = true;
   statsMenu.hidden = true;
+  guideMenu.hidden = true;
+  modePowerupSelect.hidden = true;
+  gameModeSelection.hidden = true;
+  startMenu.classList.remove("is-selecting-mode");
   closeChestReveal();
   gameStarted = false;
   levelCodeBar.classList.remove("is-playing");
@@ -2842,27 +3218,26 @@ function toggleItemEquipment(itemKey) {
   }
 
   const nextEquipped = !itemState.equipped;
-  if (
-    !nextEquipped &&
-    SHOP_ITEM_ORDER.powerups.includes(itemKey) &&
-    SHOP_ITEM_ORDER.powerups.filter((powerupKey) => itemInventory[powerupKey].equipped).length <= 1
-  ) {
-    equipmentNotice.textContent = "Can't unequip, need at least one power-up equipped.";
-    equipmentNotice.hidden = false;
-    window.clearTimeout(equipmentNoticeTimeout);
-    equipmentNoticeTimeout = window.setTimeout(() => {
-      equipmentNotice.hidden = true;
-      equipmentNoticeTimeout = null;
-    }, 2500);
-    return;
+  if (nextEquipped && BRICK_ITEM_ORDER.includes(itemKey)) {
+    const equippedBrickCount = BRICK_ITEM_ORDER.filter((brickKey) => itemInventory[brickKey].equipped).length;
+    if (equippedBrickCount >= 3) {
+      equipmentNotice.textContent = "You can equip up to 3 bricks.";
+      equipmentNotice.hidden = false;
+      window.clearTimeout(equipmentNoticeTimeout);
+      equipmentNoticeTimeout = window.setTimeout(() => {
+        equipmentNotice.hidden = true;
+        equipmentNoticeTimeout = null;
+      }, 2500);
+      return;
+    }
   }
-  itemState.equipped = nextEquipped;
-
   if (SHOP_ITEM_ORDER.powerups.includes(itemKey)) {
+    itemState.equipped = nextEquipped;
     updateShopDisplay();
     persistShopProgress();
     return;
   }
+  itemState.equipped = nextEquipped;
 
   if (nextEquipped) {
     const count = itemKey === "multiball" ? Math.floor(Math.random() * 4) + 1 : 1;
@@ -2872,6 +3247,7 @@ function toggleItemEquipment(itemKey) {
   }
 
   updateShopDisplay();
+  persistShopProgress();
 }
 
 

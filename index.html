@@ -29,7 +29,7 @@
             <button class="powerup-choice" type="button" data-run-powerup="snipe">
               <span class="powerup-choice-icon sniper-brick-preview" aria-hidden="true">AMMO</span>
               <span class="powerup-choice-name">Sniper</span>
-              <span class="powerup-choice-description">Reload 1–3 sniper shots.</span>
+              <span class="powerup-choice-description">Reload 1–2 sniper shots.</span>
             </button>
             <button class="powerup-choice" type="button" data-run-powerup="paddle">
               <span class="powerup-choice-icon paddle-brick-preview" aria-hidden="true"></span>
@@ -51,12 +51,19 @@
             <button class="powerup-choice" type="button" data-run-powerup="machineGun">
               <span class="powerup-choice-icon machine-gun-powerup-preview" aria-hidden="true"></span>
               <span class="powerup-choice-name">Machine Gun</span>
-              <span class="powerup-choice-description">Press F to fire ball bullets for 3 seconds.</span>
+              <span class="powerup-choice-description">Press F to fire ball bullets for 1 second.</span>
             </button>
             <button class="powerup-choice" type="button" data-run-powerup="doublePaddle">
               <span class="powerup-choice-icon double-paddle-powerup-preview" aria-hidden="true"></span>
               <span class="powerup-choice-name">Double Paddle</span>
-              <span class="powerup-choice-description">Add a separate blue paddle beside yours.</span>
+              <span class="powerup-choice-description">Add a blue paddle below yours.</span>
+            </button>
+            <button class="powerup-choice" type="button" data-run-powerup="heart">
+              <span class="powerup-choice-icon heart-choice-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A5.99 5.99 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.51L12 21.35Z" fill="#f05a70"></path></svg>
+              </span>
+              <span class="powerup-choice-name">Extra Life</span>
+              <span class="powerup-choice-description">Gain one additional life.</span>
             </button>
           </div>
           <p id="round-reward-details"></p>
@@ -64,11 +71,32 @@
           <div class="round-reward-actions" hidden>
             <button id="finish-run" type="button">Play Again</button>
             <button id="return-to-menu" type="button">Menu</button>
+            <div id="try-impossible-option" class="round-reward-extra-option" hidden>
+              <button id="try-impossible" type="button">Try and Beat Level 11! (Impossible)</button>
+              <small>+5,000 credits</small>
+            </div>
+            <div id="try-impossible-squared-option" class="round-reward-extra-option" hidden>
+              <button id="try-impossible-squared" type="button">Try Level 12! (Impossible²)</button>
+              <small>+100,000 credits + Permanent Rainbow Paddle &amp; Ball</small>
+            </div>
           </div>
+        </section>
+        <section id="mode-powerup-select" class="round-reward mode-powerup-select" aria-labelledby="mode-powerup-title" hidden>
+          <h2 id="mode-powerup-title">Choose 2 different powerups</h2>
+          <div id="mode-powerup-options" class="round-reward-options"></div>
+          <p id="mode-powerup-status" aria-live="polite">Choose two powerups to start.</p>
+          <button id="begin-impossible" type="button" disabled>Start Impossible</button>
+          <button id="cancel-impossible" type="button">Cancel</button>
         </section>
         <div id="start-menu" class="start-menu">
           <canvas id="menu-canvas" width="720" height="540" aria-hidden="true"></canvas>
-          <button id="start-game" type="button">Start Game</button>
+          <button id="start-game" type="button">Play</button>
+          <div id="game-mode-selection" class="game-mode-selection" hidden>
+            <button type="button" data-game-mode="normal">Normal</button>
+            <button type="button" data-game-mode="impossible">Impossible <small>*single level</small></button>
+            <button type="button" data-game-mode="impossibleSquared">Impossible² <small>*single level</small></button>
+            <button id="back-to-main-menu" type="button">Back</button>
+          </div>
           <button id="open-shop" type="button">Shop</button>
           <button id="open-stats" type="button">Stats</button>
           <button id="open-settings" type="button">Settings</button>
@@ -76,7 +104,7 @@
         <section id="shop-menu" class="shop-menu" aria-labelledby="shop-title" hidden>
           <div class="shop-header">
             <h2 id="shop-title">Loot Chest</h2>
-            <button id="open-chest" class="chest-button" type="button">Open chest · 250</button>
+            <button id="open-chest" class="chest-button" type="button">Open chest · 100</button>
           </div>
           <div class="shop-tabs" role="tablist" aria-label="Shop category">
             <button id="bricks-shop-tab" class="shop-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="shop-list" data-shop-tab="bricks">Bricks</button>
@@ -144,13 +172,28 @@
             <div><dt>Total money</dt><dd id="stat-total-money">0</dd></div>
             <div><dt>Total chests opened</dt><dd id="stat-chests-opened">0</dd></div>
             <div><dt>Highest level reached</dt><dd id="stat-highest-level">1</dd></div>
+            <div><dt>Impossible² wins</dt><dd id="stat-impossible-squared-wins">0</dd></div>
           </dl>
           <button id="close-stats" class="menu-back-button" type="button">Back</button>
         </section>
+        <section id="guide-menu" class="shop-menu guide-menu" aria-labelledby="guide-title" hidden>
+          <h2 id="guide-title">How to Play</h2>
+          <div class="guide-content">
+            <section><h3>Basic game mechanics</h3><p>Move with the arrow keys or A and D. Press Space to launch the ball. Press Shift for a brief paddle speed boost (7-second cooldown). Keep the ball in play and break every brick to complete a level.</p></section>
+            <section><h3>How the shop works</h3><p>Spend credits on chests in the Bricks and Powerups tabs to unlock items. Equip up to 3 bricks and any number of powerups. Item details and drop chances are shown in the shop.</p></section>
+            <section><h3>How choosing powerups works</h3><p>After each normal level, choose one of the displayed powerups or Extra Life for the next level. Impossible levels let you choose two different powerups before play.</p></section>
+            <section><h3>How combos work</h3><p>Break bricks without the ball touching a paddle to build a combo. Higher combos earn bonus credits at combo milestones.</p></section>
+            <section><h3>Bricks, negative bricks, and powerups</h3><div id="guide-items" class="guide-items"></div></section>
+          </div>
+          <button id="close-guide" class="menu-back-button" type="button">Back</button>
+        </section>
       </div>
-      <h1 id="game-title" class="game-title">Block Breaker</h1>
+      <h1 id="game-title" class="game-title" aria-label="Block Breaker"><span>B</span><svg class="title-block" viewBox="0 0 24 28" aria-hidden="true"><rect x="2" y="2" width="20" height="24" fill="white" stroke="black" stroke-width="2"/><path d="M12 7v12m-5-5 5-5 5 5" fill="none" stroke="black" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg><span>OCK BREAKER</span></h1>
     </section>
-    <p>Move with the arrow keys or A and D. Press Shift for a brief paddle speed boost (7-second cooldown). Press Space to launch the ball and fire collected Snipe ammo, P to activate Time Machine, or F to start the Machine Gun burst.</p>
+    <div class="guide-cta">
+      <button id="open-guide" type="button" class="guide-button">How to Play</button>
+      <span id="guide-recommended" class="guide-recommended" hidden>Recommended</span>
+    </div>
   </main>
 
   <!-- Load the audio API first; game.js defines globals used by the remaining scripts. -->

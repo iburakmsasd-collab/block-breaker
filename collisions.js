@@ -91,6 +91,28 @@ function bounceOffPaddle(ball) {
 
 
 function breakBrickIntoParticles(brick) {
+  if (brick.special === "debris") {
+    const pieceCount = 8;
+    for (let index = 0; index < pieceCount; index++) {
+      const pieceWidth = 6 + Math.random() * 5;
+      const pieceHeight = 5 + Math.random() * 4;
+      particles.push({
+        x: brick.x + (brick.width - pieceWidth) * index / (pieceCount - 1),
+        y: brick.y + brick.height / 2,
+        width: pieceWidth,
+        height: pieceHeight,
+        vx: 0,
+        vy: 2.5 + Math.random() * 1.5,
+        life: HEIGHT,
+        maxLife: HEIGHT,
+        opaque: true,
+        color: brick.color,
+        debris: true
+      });
+    }
+    return;
+  }
+
   const rows = 6;
   const columnsByRow = [8, 10, 12, 10, 8, 12];
   for (let row = 0; row < rows; row++) {
@@ -168,7 +190,9 @@ function damageBrick(brick) {
   if (brick.hitstillbroken <= 0) {
     brick.pendingDestroy = true;
     brick.pendingDestroyFrames = BRICK_BREAK_DELAY_FRAMES;
-    if (brick.darkerColor) {
+    if (brick.special === "debris") {
+      breakBrickIntoParticles(brick);
+    } else if (brick.darkerColor) {
       breakCheckerTilesIntoParticles(brick, false);
       breakCheckerTilesIntoParticles(brick, true);
     } else {
@@ -196,7 +220,9 @@ function destroyBrick(brick, particlesAlreadyEmitted = false, suppressSpecialEff
     return;
   }
   if (!particlesAlreadyEmitted) {
-    if (brick.darkerColor) {
+    if (brick.special === "debris") {
+      breakBrickIntoParticles(brick);
+    } else if (brick.darkerColor) {
       breakCheckerTilesIntoParticles(brick, false);
       breakCheckerTilesIntoParticles(brick, true);
     } else {
@@ -246,10 +272,14 @@ function bounceOffBricks(ball, damage = true) {
 
     if (damage) {
       damageBrick(brick);
-      if (brick.special === "gravityBreaker") {
+      if (brick.special === "speedBrick") {
         const speed = Math.hypot(ball.vx, ball.vy) || BALL_SPEED;
+        if (!ball.speedBrickBoostUntil || ball.speedBrickBoostUntil <= performance.now()) {
+          ball.speedBrickBaseSpeed = speed;
+        }
         ball.vx = 0;
         ball.vy = speed * 2;
+        ball.speedBrickBoostUntil = performance.now() + 5000;
         ball.piercingDownUntilPaddle = true;
       }
     }
